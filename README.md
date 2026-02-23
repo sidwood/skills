@@ -2,6 +2,17 @@
 
 A collection of skills for agents, focused on software engineering and knowledge management.
 
+## Install
+
+Requires [GNU Stow](https://www.gnu.org/software/stow/).
+
+```bash
+mkdir -p ~/.claude/skills
+stow -d ~/code -t ~/.claude/skills --ignore='README\.md' skills
+```
+
+Re-run the same command after adding new skills — Stow is idempotent for existing links and additive for new ones.
+
 ## Planned
 
 ### Software Engineering
