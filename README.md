@@ -6,9 +6,11 @@ A collection of skills for agents, focused on software engineering and knowledge
 
 Requires [GNU Stow](https://www.gnu.org/software/stow/).
 
+From within this repo:
+
 ```bash
 mkdir -p ~/.claude/skills
-stow -d ~/code -t ~/.claude/skills --ignore='README\.md' skills
+stow -d .. -t ~/.claude/skills --ignore='README\.md' skills
 ```
 
 Re-run the same command after adding new skills — Stow is idempotent for existing links and additive for new ones.
