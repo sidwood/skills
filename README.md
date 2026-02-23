@@ -2,7 +2,7 @@
 
 A collection of skills for agents, focused on software engineering and knowledge management.
 
-## Scope
+## Planned
 
 ### Software Engineering
 
