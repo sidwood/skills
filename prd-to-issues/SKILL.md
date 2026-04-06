@@ -55,10 +55,19 @@ For each approved slice, create a GitHub issue using `gh issue create`. Use the 
 
 Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
+Every issue MUST be labeled with either `hitl` or `afk` to match its Type. Pass the label via `gh issue create --label hitl` or `gh issue create --label afk`.
+
+Before creating the first issue, ensure both labels exist in the repo. If either is missing, create it:
+
+```bash
+gh label create hitl --description "Requires human interaction" --color B60205 || true
+gh label create afk  --description "Can be implemented without human interaction" --color 0E8A16 || true
+```
+
 <issue-template>
 ## Parent PRD
 
-#<prd-issue-number>
+# <prd-issue-number>
 
 ## What to build
 
