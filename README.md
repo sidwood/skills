@@ -10,10 +10,11 @@ From within this repo:
 
 ```bash
 mkdir -p ~/.claude/skills
-stow -d .. -t ~/.claude/skills --ignore='README\.md' skills
+stow -d .. -t ~/.claude/skills --ignore='README\.md' --ignore='AGENTS\.md' skills
+ln -sf "$(pwd)/AGENTS.md" ~/.claude/CLAUDE.md
 ```
 
-Re-run the same command after adding new skills — Stow is idempotent for existing links and additive for new ones.
+Re-run the stow command after adding new skills — Stow is idempotent for existing links and additive for new ones.
 
 ## Planned
 
