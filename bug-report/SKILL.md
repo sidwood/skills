@@ -1,11 +1,11 @@
 ---
-name: qa
-description: Interactive QA session where user reports bugs or issues conversationally, and the agent files GitHub issues. Explores the codebase in the background for context and domain language. Use when user wants to report bugs, do QA, file issues conversationally, or mentions "QA session".
+name: bug-report
+description: Interactive bug-reporting session where the user describes problems conversationally and the agent files GitHub issues. Explores the codebase in the background for context and domain language. Use when the user wants to report bugs, file issues conversationally, run a QA session, or mentions "bug report".
 ---
 
-# QA Session
+# Bug Report
 
-Run an interactive QA session. The user describes problems they're encountering. You clarify, explore the codebase for context, and file GitHub issues that are durable, user-focused, and use the project's domain language.
+Run an interactive bug-reporting session. The user describes problems they're encountering. You clarify, explore the codebase for context, and file GitHub issues that are durable, user-focused, and use the project's domain language.
 
 ## For each issue the user raises
 
