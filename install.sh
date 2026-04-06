@@ -14,7 +14,12 @@ fi
 mkdir -p ~/.claude/skills
 
 # Symlink skills into ~/.claude/skills
-stow -d "$REPO_DIR/.." -t ~/.claude/skills --ignore='README\.md' --ignore='AGENTS\.md' skills
+stow -d "$REPO_DIR/.." -t ~/.claude/skills \
+  --ignore='README\.md' \
+  --ignore='AGENTS\.md' \
+  --ignore='install\.sh' \
+  --ignore='uninstall\.sh' \
+  skills
 
 # Symlink AGENTS.md as ~/.claude/CLAUDE.md
 ln -sf "$REPO_DIR/AGENTS.md" ~/.claude/CLAUDE.md
