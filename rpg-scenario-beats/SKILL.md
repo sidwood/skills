@@ -1,13 +1,13 @@
 ---
 name: rpg-scenario-beats
-description: Assess an RPG scenario, campaign outline, mystery spine, mission brief, or proposed adventure using the beat analysis method from Hamlet's Hit Points. Use when user wants to assess an RPG scenario, campaign outline, mystery spine, mission brief, or proposed adventure.
+description: Use when user wants to build, develop, stress-test, or assess an RPG scenario, campaign outline, mystery spine, mission brief, or proposed adventure.
 ---
 
-# Skill: RPG Scenario Beat Assessor
+# Skill: RPG Scenario Beat Builder
 
 ## Purpose
 
-Assess an RPG scenario, campaign outline, mystery spine, mission brief, or proposed adventure using the beat analysis method from Hamlet's Hit Points.
+Build or assess an RPG scenario, campaign outline, mystery spine, mission brief, or proposed adventure through a relentless collaborative interview, then apply the beat analysis method from Hamlet's Hit Points.
 
 The goal is not to force a plotted story. The goal is to improve the scenario's emotional rhythm, player engagement, clarity, tension, and sense of meaningful choice.
 
@@ -28,6 +28,88 @@ Map:
 5. Reveals the scenario can deliver
 6. Pressures that may move the story forward
 7. Places where the GM may need to adjust rhythm during play
+
+## Required interaction mode
+
+Use the grill-me process before producing a finished outline or assessment.
+
+Interview the user relentlessly about every aspect of the scenario until you reach shared understanding. Walk down each branch of the scenario tree, resolving dependencies between decisions one by one. For each question, provide your recommended answer.
+
+Ask the questions one at a time.
+
+If a question can already be answered from the user's scenario text, infer the answer, state the inference briefly, and ask the next unresolved question instead.
+
+Do not dump a complete outline before the user has answered the necessary premise, player character, opposition, stakes, and structure questions.
+
+Do not drill into individual scenes until the user has accepted or corrected the high-level scenario outline.
+
+## Collaborative development workflow
+
+### Step 1: Establish the scenario frame
+
+Start by restating what the user has already provided in this form:
+
+"I understand this as [genre emotion] about PCs who pursue [external goal] while confronting [inner, moral, social, or thematic pressure]."
+
+Then ask the single most important unresolved question.
+
+Prefer questions in this order:
+
+1. What are the PCs and why are they involved?
+2. What is the practical objective?
+3. What pressure makes delay or inaction costly?
+4. What emotional experience should dominate: dread, wonder, paranoia, tragedy, triumph, mystery, moral compromise, or something else?
+5. What choice should feel meaningful at the table?
+6. What antagonist, environment, institution, or hidden truth pushes back?
+7. What information starts hidden?
+8. What should success cost?
+
+### Step 2: Build the high-level outline collaboratively
+
+Once the frame is clear, propose a compact outline for user approval.
+
+The outline should include:
+
+1. Playable promise
+2. Core procedural goal
+3. Dramatic pressure
+4. Main nodes or scenes
+5. Key questions and reveals
+6. Major choices
+7. Expected rhythm line
+8. Open design decisions
+
+Ask whether the outline is right before moving deeper.
+
+### Step 3: Develop each scene in detail
+
+After the user accepts or corrects the outline, work through one scene at a time.
+
+For each scene, ask unresolved questions one at a time until the scene has:
+
+1. Entry condition: how the PCs arrive or trigger it
+2. Visible situation: what they immediately perceive
+3. Player facing question or pressure
+4. Beat type and likely emotional movement
+5. Actionable clue, obstacle, offer, threat, or opportunity
+6. At least two meaningful player responses
+7. Consequences for success, failure, delay, or refusal
+8. Exit vectors to other scenes
+9. GM rhythm note
+
+Then summarize the scene and ask whether to revise it or continue to the next scene.
+
+### Step 4: Only then assess and repair
+
+When the outline and scene pass are complete, use the assessment workflow below to diagnose rhythm, clarity, tension, player agency, and payoff.
+
+## Interview pattern
+
+Use this pattern throughout:
+
+User gives premise: "The PCs investigate a drowned village that reappears once a year."
+
+Agent: "I understand this as folk horror about PCs pursuing the truth behind a returning village while confronting what the living owe the dead. My recommended answer is that the PCs are tied to someone who vanished there, because personal stakes will make the mystery more than tourism. Are the PCs locals, outsiders with a missing loved one, or officials sent to contain the event?"
 
 ## Source model
 
@@ -227,6 +309,10 @@ Examples:
 Mixed beats are often memorable. Do not flatten them into a simple up or down unless clarity requires it.
 
 ## Assessment workflow
+
+Use this workflow internally during the interview and explicitly after the outline and scene pass are complete.
+
+During collaboration, do not ask these question lists all at once. Choose the most important unresolved question, provide your recommended answer, and wait for the user's response.
 
 ### Step 1: Identify the playable promise
 
@@ -453,7 +539,9 @@ Table version: [how the GM presents it]
 Branches: [at least two ways players can respond]
 Why it works: [how it changes rhythm, clarity, or engagement]
 
-## Output format for scenario reviews
+## Output format for completed outlines or scenario reviews
+
+Use this format only after the interview has established shared understanding and the user accepts the high-level outline, completes the scene-by-scene pass, or explicitly asks to stop interviewing and receive a review.
 
 ### 1. Scenario pulse
 
@@ -473,8 +561,7 @@ Use a compact table.
 
 Columns:
 
-1. #
-
+1. Number
 2. Node or scene
 3. Beat type
 4. Likely resolution
@@ -623,18 +710,22 @@ If one player was peripheral, create a beat that centres their expertise, bond, 
 
 ## Quality rules
 
-1. Do not force a three act structure.
-2. Do not prescribe a single correct player path.
-3. Do not pre-decide all resolutions.
-4. Do not confuse bleakness with tension.
-5. Do not confuse lore with story movement.
-6. Do not make every clue a down beat.
-7. Do not make every reveal purely explanatory.
-8. Do not use commentary as a lecture.
-9. Do not let pipe become obvious setup.
-10. Do not over-map combat during live play.
-11. Do not rely on offscreen antagonist scenes unless their effects become player facing.
-12. Do not remove ambiguity when ambiguity is doing useful emotional work.
+1. Do not ask multiple design questions at once.
+2. Do not produce a complete outline before shared understanding exists.
+3. Do not drill into scenes before the user accepts or corrects the high-level outline.
+4. Do not treat your recommended answer as final; use it to make the question easier to answer.
+5. Do not force a three act structure.
+6. Do not prescribe a single correct player path.
+7. Do not pre-decide all resolutions.
+8. Do not confuse bleakness with tension.
+9. Do not confuse lore with story movement.
+10. Do not make every clue a down beat.
+11. Do not make every reveal purely explanatory.
+12. Do not use commentary as a lecture.
+13. Do not let pipe become obvious setup.
+14. Do not over-map combat during live play.
+15. Do not rely on off-screen antagonist scenes unless their effects become player facing.
+16. Do not remove ambiguity when ambiguity is doing useful emotional work.
 
 ## Evaluation rubric
 
