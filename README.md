@@ -1,6 +1,6 @@
 # Agent Skills
 
-A collection of skills for agents, focused on software engineering and knowledge management.
+This repo is the single source of truth, and install should expose these repo skills to both Claude and Codex.
 
 ## Install
 
@@ -11,6 +11,13 @@ Requires [GNU Stow](https://www.gnu.org/software/stow/).
 ```
 
 Re-run after adding new skills — Stow is idempotent for existing links and additive for new ones.
+
+The installer symlinks this repository's skills into:
+
+- `~/.claude/skills`
+- `~/.codex/skills`
+
+Existing skills installed elsewhere are left untouched. They are not imported into this repository, and they are not exposed to Claude by this installer.
 
 ## Uninstall
 
