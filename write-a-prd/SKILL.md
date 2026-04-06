@@ -17,7 +17,7 @@ This skill will be invoked when the user wants to create a PRD. You may skip ste
 
    Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-5. Once you have a complete understanding of the problem and solution, use the template below to write the PRD. The PRD should be submitted as a GitHub issue.
+5. Once you have a complete understanding of the problem and solution, use the template below to write the PRD. The PRD should be submitted as a GitHub issue with the `prd` label applied (e.g. `gh issue create --label prd ...`). If the `prd` label does not yet exist in the repo, create it first with `gh label create prd`.
 
 <prd-template>
 
