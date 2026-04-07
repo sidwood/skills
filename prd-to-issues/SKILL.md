@@ -23,7 +23,7 @@ If you have not already explored the codebase, do so to understand the current s
 
 Break the PRD into **tracer bullet** issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 
-Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
+Slices may be 'HITL' or 'AFK'. HITL means a single supervised agentic loop: an agent can do the work end-to-end, but the user should keep an eye on the loop because the slice establishes product, domain, or architecture decisions that downstream work will depend on. Do not mark a slice HITL merely because it is difficult or needs normal code review. AFK slices can be implemented and merged without user attention beyond normal review. Prefer AFK where product/domain decisions are already clear.
 
 <vertical-slice-rules>
 - Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)
@@ -60,7 +60,7 @@ Every issue MUST be labeled with either `hitl` or `afk` to match its Type. Pass 
 Before creating the first issue, ensure both labels exist in the repo. If either is missing, create it:
 
 ```bash
-gh label create hitl --description "Requires human interaction" --color B60205 || true
+gh label create hitl --description "Requires supervised agentic loop" --color B60205 || true
 gh label create afk  --description "Can be implemented without human interaction" --color 0E8A16 || true
 ```
 
