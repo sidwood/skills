@@ -23,7 +23,7 @@ gh issue view <number> --comments
 
 Identify the work that delivered the PRD so the review is grounded in real changes, not speculation:
 
-- Sub-issues linked to the PRD (blocked-by / tracking dependencies produced by `prd-to-issues`)
+- Sub-issues linked to the PRD (blocked-by / tracking dependencies produced by `to-issues`)
 - Pull requests that reference the PRD or its sub-issues — e.g. `gh pr list --search "<prd-number> in:body" --state merged`
 - The diffs of those merged PRs
 

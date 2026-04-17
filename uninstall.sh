@@ -66,9 +66,11 @@ if [ -d "$REPO_DIR/.claude" ]; then
   remove_link_if_target "$CODEX_SKILLS_DIR/.claude" "$(cd "$REPO_DIR/.claude" && pwd -P)"
 fi
 
-# Remove legacy links from before write-a-prd was renamed to to-prd.
+# Remove legacy links from before skills were renamed.
 remove_link_if_target "$CLAUDE_SKILLS_DIR/write-a-prd" "$REPO_DIR/write-a-prd"
 remove_link_if_target "$CODEX_SKILLS_DIR/write-a-prd" "$REPO_DIR/write-a-prd"
+remove_link_if_target "$CLAUDE_SKILLS_DIR/prd-to-issues" "$REPO_DIR/prd-to-issues"
+remove_link_if_target "$CODEX_SKILLS_DIR/prd-to-issues" "$REPO_DIR/prd-to-issues"
 
 # Remove AGENTS.md symlink if it points to this repo
 if [ -L "$CLAUDE_HOME/CLAUDE.md" ] && [ "$(readlink "$CLAUDE_HOME/CLAUDE.md")" = "$REPO_DIR/AGENTS.md" ]; then
