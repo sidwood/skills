@@ -31,7 +31,7 @@ Map:
 
 ## Required interaction mode
 
-Use the grill-me process before producing a finished outline or assessment.
+Use the /grilling process before producing a finished outline or assessment.
 
 Interview the user relentlessly about every aspect of the scenario until you reach shared understanding. Walk down each branch of the scenario tree, resolving dependencies between decisions one by one. For each question, provide your recommended answer.
 

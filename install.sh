@@ -75,6 +75,8 @@ remove_link_if_target "$CLAUDE_SKILLS_DIR/prd-to-issues" "$REPO_DIR/prd-to-issue
 remove_link_if_target "$CODEX_SKILLS_DIR/prd-to-issues" "$REPO_DIR/prd-to-issues"
 remove_link_if_target "$CLAUDE_SKILLS_DIR/write-a-skill" "$REPO_DIR/write-a-skill"
 remove_link_if_target "$CODEX_SKILLS_DIR/write-a-skill" "$REPO_DIR/write-a-skill"
+remove_link_if_target "$CLAUDE_SKILLS_DIR/grill-me" "$REPO_DIR/grill-me"
+remove_link_if_target "$CODEX_SKILLS_DIR/grill-me" "$REPO_DIR/grill-me"
 remove_link_if_target "$CLAUDE_SKILLS_DIR/caveman" "$REPO_DIR/caveman"
 remove_link_if_target "$CODEX_SKILLS_DIR/caveman" "$REPO_DIR/caveman"
 
