@@ -22,7 +22,10 @@ remove_link_if_target() {
       resolved_target="$link_target"
       ;;
     *)
-      resolved_dir="$(cd "$(dirname "$link_path")" && cd "$(dirname "$link_target")" && pwd -P)"
+      if ! resolved_dir="$(cd "$(dirname "$link_path")" && cd "$(dirname "$link_target")" 2>/dev/null && pwd -P)"; then
+        echo "Warning: could not resolve symlink target for '$link_path'; skipping." >&2
+        return 0
+      fi
       resolved_target="$resolved_dir/$(basename "$link_target")"
       ;;
   esac
@@ -81,8 +84,13 @@ if [ -L "$CLAUDE_HOME/CLAUDE.md" ] && [ "$(readlink "$CLAUDE_HOME/CLAUDE.md")" =
   rm "$CLAUDE_HOME/CLAUDE.md"
 fi
 
-# Remove skills directory if empty
-rmdir "$CLAUDE_SKILLS_DIR" 2>/dev/null || true
-rmdir "$CODEX_SKILLS_DIR" 2>/dev/null || true
+# Remove skills directories only when empty. Leaving non-empty directories
+# untouched is expected, but any other rmdir failure (e.g. permissions) should
+# surface rather than be swallowed.
+for skills_dir in "$CLAUDE_SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
+  if [ -d "$skills_dir" ] && [ -z "$(ls -A "$skills_dir")" ]; then
+    rmdir "$skills_dir"
+  fi
+done
 
 echo "Skills uninstalled successfully."
