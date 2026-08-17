@@ -86,9 +86,13 @@ teardown() {
 @test "install: removes renamed-skill links owned by the repository" {
   mkdir -p "$CLAUDE_SKILLS_DIR"
   ln -s "$REPO_ROOT/write-a-prd" "$CLAUDE_SKILLS_DIR/write-a-prd"
+  ln -s \
+    "$REPO_ROOT/skills/engineering/domain-model" \
+    "$CLAUDE_SKILLS_DIR/domain-model"
   run_install
   [ "$status" -eq 0 ]
   [ ! -L "$CLAUDE_SKILLS_DIR/write-a-prd" ]
+  [ ! -L "$CLAUDE_SKILLS_DIR/domain-model" ]
 }
 
 @test "install: configures the repository as a Hermes external directory" {

@@ -64,9 +64,13 @@ teardown() {
 @test "uninstall: removes renamed-skill links owned by the repository" {
   mkdir -p "$CLAUDE_SKILLS_DIR"
   ln -s "$REPO_ROOT/caveman" "$CLAUDE_SKILLS_DIR/caveman"
+  ln -s \
+    "$REPO_ROOT/skills/engineering/design-an-interface" \
+    "$CLAUDE_SKILLS_DIR/design-an-interface"
   run_uninstall
   [ "$status" -eq 0 ]
   [ ! -L "$CLAUDE_SKILLS_DIR/caveman" ]
+  [ ! -L "$CLAUDE_SKILLS_DIR/design-an-interface" ]
 }
 
 @test "uninstall: is idempotent" {

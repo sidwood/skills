@@ -36,6 +36,8 @@ LEGACY_SKILLS=(
   write-a-skill
   grill-me
   caveman
+  domain-model
+  design-an-interface
 )
 
 # Print one frontmatter value without parsing body content.
@@ -355,7 +357,14 @@ remove_legacy_links() {
 
   for target_dir in "${SKILLS_TARGET_DIRS[@]}" "$LEGACY_CODEX_SKILLS_DIR"; do
     for legacy_skill in "${LEGACY_SKILLS[@]}"; do
-      remove_link_if_target "$target_dir/$legacy_skill" "$REPO_DIR/$legacy_skill"
+      remove_link_if_target \
+        "$target_dir/$legacy_skill" \
+        "$REPO_DIR/$legacy_skill" \
+        "$SKILLS_ROOT/product/$legacy_skill" \
+        "$SKILLS_ROOT/engineering/$legacy_skill" \
+        "$SKILLS_ROOT/workflow/$legacy_skill" \
+        "$SKILLS_ROOT/authoring/$legacy_skill" \
+        "$SKILLS_ROOT/creative/$legacy_skill"
     done
 
     if [ -d "$REPO_DIR/.claude" ]; then
