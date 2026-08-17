@@ -4,6 +4,7 @@
   "language": "en-US",
   "useGitignore": true,
   "words": [
+    "adrs",
     "Alamata",
     "Ango",
     "autosquash",
