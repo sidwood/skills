@@ -1,0 +1,5 @@
+interface:
+  display_name: "Resolving Rebase Conflicts"
+  short_description: "Resolve rebase conflicts without merge commits"
+policy:
+  allow_implicit_invocation: true
