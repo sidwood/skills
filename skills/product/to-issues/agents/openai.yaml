@@ -1,0 +1,5 @@
+interface:
+  display_name: "To Issues"
+  short_description: "Split plans into tracer-bullet GitHub issues"
+policy:
+  allow_implicit_invocation: true
