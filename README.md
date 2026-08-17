@@ -13,7 +13,7 @@ skill under its unqualified name.
 | Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd`, `to-questionnaire` |
 | Engineering | `bug-report`, `commit-message`, `design-an-interface`, `domain-model`, `improve-codebase-architecture`, `migrate-to-shoehorn`, `ubiquitous-language` |
 | Workflow | `compress`, `defuddle`, `grilling`, `handoff`, `teach`, `wait-what`, `zoom-out` |
-| Authoring | `compress-a-skill`, `humanizer`, `to-skill`, `verify-compression` |
+| Authoring | `compress-a-skill`, `humanizer`, `to-skill`, `verify-compression`, `writing-for-agents` |
 | Creative | `rpg-scenario-beats` |
 
 Canonical skills live at `skills/<category>/<name>/`. Installed links are flat,
