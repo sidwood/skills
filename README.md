@@ -32,6 +32,19 @@ Existing skills installed elsewhere are left untouched. They are not imported in
 ./uninstall.sh
 ```
 
+## Tests
+
+The `install.sh` and `uninstall.sh` scripts are covered by a
+[bats](https://github.com/bats-core/bats-core) test suite in `tests/`. It runs
+each script against a throwaway sandbox `HOME`, so it never touches your real
+Claude or Codex configuration.
+
+Requires `bats` and GNU Stow:
+
+```bash
+./tests/run.sh
+```
+
 ## Planned
 
 ### Software Engineering
