@@ -38,27 +38,14 @@ teardown() {
   [ ! -e "$GROK_SKILLS_DIR/.githooks" ]
 }
 
-@test "install: links AGENTS.md as Claude instructions" {
-  run_install
-  [ "$status" -eq 0 ]
-  assert_symlink_to "$CLAUDE_HOME/CLAUDE.md" "$REPO_ROOT/AGENTS.md"
-}
-
-@test "install: leaves a regular Claude instructions file untouched" {
-  mkdir -p "$CLAUDE_HOME"
-  printf 'personal instructions\n' > "$CLAUDE_HOME/CLAUDE.md"
-  run_install
-  [ "$status" -eq 0 ]
-  [ "$(cat "$CLAUDE_HOME/CLAUDE.md")" = "personal instructions" ]
-  [[ "$output" == *"leaving it untouched"* ]]
-}
-
-@test "install: refreshes a Claude instructions symlink" {
+@test "install: leaves Claude global instructions untouched" {
   mkdir -p "$CLAUDE_HOME"
   ln -s "$SANDBOX/other-agents.md" "$CLAUDE_HOME/CLAUDE.md"
+
   run_install
+
   [ "$status" -eq 0 ]
-  assert_symlink_to "$CLAUDE_HOME/CLAUDE.md" "$REPO_ROOT/AGENTS.md"
+  assert_symlink_to "$CLAUDE_HOME/CLAUDE.md" "$SANDBOX/other-agents.md"
 }
 
 @test "install: is idempotent" {

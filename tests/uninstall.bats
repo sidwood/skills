@@ -20,14 +20,6 @@ teardown() {
   [ ! -L "$GROK_SKILLS_DIR/to-prd" ]
 }
 
-@test "uninstall: removes repository Claude instructions" {
-  run_install
-  [ "$status" -eq 0 ]
-  run_uninstall
-  [ "$status" -eq 0 ]
-  [ ! -L "$CLAUDE_HOME/CLAUDE.md" ]
-}
-
 @test "uninstall: leaves foreign links untouched" {
   mkdir -p "$CLAUDE_HOME" "$AGENTS_SKILLS_DIR"
   ln -s "$SANDBOX/other-agents.md" "$CLAUDE_HOME/CLAUDE.md"

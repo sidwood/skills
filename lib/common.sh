@@ -368,22 +368,6 @@ remove_legacy_links() {
   remove_catalog_links_from_target "$LEGACY_CODEX_SKILLS_DIR"
 }
 
-install_claude_instructions() {
-  local instructions_link="$CLAUDE_HOME/CLAUDE.md"
-
-  mkdir -p "$CLAUDE_HOME"
-  if [ -e "$instructions_link" ] && [ ! -L "$instructions_link" ]; then
-    echo "Warning: '$instructions_link' already exists; leaving it untouched." >&2
-    return 0
-  fi
-
-  ln -sfn "$REPO_DIR/AGENTS.md" "$instructions_link"
-}
-
-remove_claude_instructions() {
-  remove_link_if_target "$CLAUDE_HOME/CLAUDE.md" "$REPO_DIR/AGENTS.md"
-}
-
 # Hermes owns ~/.hermes/skills, so expose this repository as an external skill
 # directory instead of placing links among Hermes-managed skills.
 configure_hermes() {

@@ -38,10 +38,8 @@ hook, and creates repository-owned links in three global locations:
 
 Foreign files and links are left untouched. Re-running the installer is safe.
 The installer also migrates this repository's old links out of
-`~/.codex/skills`.
-
-Claude receives this repository's `AGENTS.md` through
-`~/.claude/CLAUDE.md`. An existing regular `CLAUDE.md` is preserved.
+`~/.codex/skills`. Global instruction files remain owned by each harness or
+the user's dotfiles.
 
 The repository-managed Git hooks run two validation stages:
 

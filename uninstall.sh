@@ -11,7 +11,6 @@ for skills_dir in "${SKILLS_TARGET_DIRS[@]}"; do
 done
 
 remove_legacy_links
-remove_claude_instructions
 unconfigure_hermes
 remove_empty_skill_directories
 
