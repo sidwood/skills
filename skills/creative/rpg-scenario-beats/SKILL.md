@@ -186,7 +186,7 @@ Use when the PCs:
 2. Spot the enemy's weakness
 3. Prepare an ambush
 4. Decode the ritual
-5. Realise their plan might work
+5. Realize their plan might work
 6. Gain a tactical advantage
 7. Approach a long promised confrontation
 
@@ -194,7 +194,7 @@ Anticipation is especially useful before a climax. It gives players something to
 
 ### Gratification beat
 
-A positive beat that gives pleasure, humour, warmth, style, spectacle, mastery, or relief.
+A positive beat that gives pleasure, humor, warmth, style, spectacle, mastery, or relief.
 
 Use carefully. Gratification is useful when the scenario has become too bleak, but too many gratification beats can feel disconnected or indulgent.
 
@@ -316,13 +316,13 @@ During collaboration, do not ask these question lists all at once. Choose the mo
 
 ### Step 1: Identify the playable promise
 
-Summarise the scenario in this form:
+Summarize the scenario in this form:
 
 "This scenario promises [genre emotion] by having the PCs pursue [external goal] while confronting [inner, moral, social, or thematic pressure]."
 
 Examples:
 
-"This scenario promises paranoid horror by having agents investigate a trusted colleague while confronting the possibility that their own organisation is unreliable."
+"This scenario promises paranoid horror by having agents investigate a trusted colleague while confronting the possibility that their own organization is unreliable."
 
 "This scenario promises occult war horror by sending soldiers into a real military operation where the supernatural is hidden inside battlefield chaos."
 
@@ -479,7 +479,7 @@ Convert offscreen beats into player facing material:
 4. Surveillance footage
 5. Intercepted messages
 6. Consequences in the environment
-7. NPC behaviour changes
+7. NPC behavior changes
 8. Enemy actions that hit the PCs directly
 9. Dreams, visions, or unnatural impressions if genre appropriate
 
@@ -652,7 +652,7 @@ Mission scenarios often become too procedural.
 
 Add dramatic force by asking:
 
-1. Who humanises the objective?
+1. Who humanizes the objective?
 2. What order becomes morally difficult?
 3. What ally becomes hard to trust?
 4. What success still feels disturbing?
@@ -691,7 +691,7 @@ Track:
 
 1. Actual beats
 2. Up, down, lateral, or crossed resolution
-3. Which player or character was centred
+3. Which player or character was centered
 4. Where players disengaged
 5. Where players argued
 6. Where players became excited
@@ -706,7 +706,7 @@ If there were too many down beats, open with clarity, competence, warmth, or a p
 
 If there were too many up beats, introduce pressure, cost, opposition, or a question.
 
-If one player was peripheral, create a beat that centres their expertise, bond, fear, or goal.
+If one player was peripheral, create a beat that centers their expertise, bond, fear, or goal.
 
 ## Quality rules
 
