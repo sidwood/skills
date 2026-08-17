@@ -40,6 +40,9 @@ teardown() {
   [ ! -e "$CLAUDE_SKILLS_DIR/README.md" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/install.sh" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/uninstall.sh" ]
+  [ ! -e "$CLAUDE_SKILLS_DIR/lib" ]
+  [ ! -e "$CLAUDE_SKILLS_DIR/tests" ]
+  [ ! -e "$CLAUDE_SKILLS_DIR/.githooks" ]
   [ ! -e "$CODEX_SKILLS_DIR/AGENTS.md" ]
 }
 
