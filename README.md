@@ -10,7 +10,7 @@ skill under its unqualified name.
 
 | Category | Skills |
 | --- | --- |
-| Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd` |
+| Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd`, `to-questionnaire` |
 | Engineering | `bug-report`, `commit-message`, `design-an-interface`, `domain-model`, `improve-codebase-architecture`, `migrate-to-shoehorn`, `ubiquitous-language` |
 | Workflow | `compress`, `defuddle`, `grilling`, `handoff`, `zoom-out` |
 | Authoring | `compress-a-skill`, `humanizer`, `to-skill`, `verify-compression` |
