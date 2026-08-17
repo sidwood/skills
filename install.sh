@@ -7,6 +7,12 @@ CLAUDE_SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$CLAUDE_HOME/skills}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_SKILLS_DIR="${CODEX_SKILLS_DIR:-$CODEX_HOME/skills}"
 
+# Use the repository-managed commit-message checks in a Git checkout. Archives
+# can still install the skills, but have no repository in which to enable it.
+if git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null; then
+  git -C "$REPO_DIR" config core.hooksPath .githooks
+fi
+
 remove_link_if_target() {
   local link_path="$1"
   local expected_target="$2"

@@ -6,3 +6,4 @@ Follow Tim Pope's commit message conventions:
 - Blank line separating subject from body (omit body entirely if change is self-explanatory)
 - Body wrapped at 72 characters, explaining *why* not *what*
 - Bullet points use a hyphen followed by a single space, blank lines between bullets, hanging indent for wrapped lines
+- No `Co-authored-by:` trailers or model-generated `Generated with [...]` attribution

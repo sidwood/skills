@@ -12,6 +12,13 @@ Requires [GNU Stow](https://www.gnu.org/software/stow/).
 
 Re-run after adding new skills — Stow is idempotent for existing links and additive for new ones.
 
+The installer also enables the repository's commit-message hook. If you do not
+run the installer after cloning, enable it manually:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 The installer symlinks this repository's skills into:
 
 - `~/.claude/skills`
