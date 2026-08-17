@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review a diff against standards and specification"
+policy:
+  allow_implicit_invocation: true
