@@ -46,7 +46,7 @@ Claude receives this repository's `AGENTS.md` through
 The repository-managed Git hooks run two validation stages:
 
 - `pre-commit` delegates staged-file checks to `.pre-commit-config.yaml`,
-  currently ShellCheck and Gitleaks.
+  currently CSpell, ShellCheck, Gitleaks, and skill-catalog validation.
 - `commit-msg` enforces the repository's commit-message convention.
 
 The first pre-commit run downloads and caches the pinned hook environments.

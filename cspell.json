@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en-US",
+  "useGitignore": true,
+  "words": [
+    "autosquash",
+    "bringdown",
+    "bringdowns",
+    "deepenable",
+    "demoable",
+    "frontmatter",
+    "grabbable",
+    "HITL",
+    "Kimi",
+    "misrouting",
+    "mktemp",
+    "Ousterhout",
+    "pipefail",
+    "Pocock",
+    "pretrained",
+    "reqs",
+    "RLENGTH",
+    "RSTART",
+    "safehouse",
+    "ShellCheck",
+    "sidwood",
+    "stripspace",
+    "tolower",
+    "unconfigure"
+  ]
+}

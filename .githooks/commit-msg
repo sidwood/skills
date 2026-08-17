@@ -95,7 +95,7 @@ END {
 
   if (invalid) {
     print "" > "/dev/stderr"
-    print "Convention: capitalised imperative subject of 50 characters or fewer, a" > "/dev/stderr"
+    print "Convention: capitalized imperative subject of 50 characters or fewer, a" > "/dev/stderr"
     print "blank line, then an optional body wrapped at 72 explaining why rather" > "/dev/stderr"
     print "than what." > "/dev/stderr"
     print "" > "/dev/stderr"
