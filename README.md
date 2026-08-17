@@ -1,30 +1,59 @@
 # Agent Skills
 
-This repo is the single source of truth, and install should expose these repo skills to both Claude and Codex.
+Personal, reusable Agent Skills organized by purpose and installed globally for
+the coding agents I use.
+
+## Catalog
+
+The repository keeps a visible taxonomy while the installer exposes every
+skill under its unqualified name.
+
+| Category | Skills |
+| --- | --- |
+| Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd` |
+| Engineering | `bug-report`, `commit-message`, `design-an-interface`, `domain-model`, `improve-codebase-architecture`, `ubiquitous-language` |
+| Workflow | `compress`, `grilling`, `zoom-out` |
+| Authoring | `compress-a-skill`, `to-skill`, `verify-compression` |
+| Creative | `rpg-scenario-beats` |
+
+Canonical skills live at `skills/<category>/<name>/`. Installed links are flat,
+so `skills/engineering/commit-message` is installed as `commit-message`.
 
 ## Install
-
-Requires [GNU Stow](https://www.gnu.org/software/stow/).
 
 ```bash
 ./install.sh
 ```
 
-Re-run after adding new skills — Stow is idempotent for existing links and additive for new ones.
+The installer validates that every directory matches the `name` in its
+`SKILL.md`, refuses duplicate names, enables the repository commit-message
+hook, and creates repository-owned links in three global locations:
 
-The installer also enables the repository's commit-message hook. If you do not
-run the installer after cloning, enable it manually:
+| Location | Agents |
+| --- | --- |
+| `~/.agents/skills` | Codex, Cursor, Kimi Code, OpenCode, Pi |
+| `~/.claude/skills` | Claude App Code tab, Claude Code |
+| `~/.grok/skills` | Grok |
 
-```bash
-git config core.hooksPath .githooks
-```
+Foreign files and links are left untouched. Re-running the installer is safe.
+The installer also migrates this repository's old links out of
+`~/.codex/skills`.
 
-The installer symlinks this repository's skills into:
+Claude receives this repository's `AGENTS.md` through
+`~/.claude/CLAUDE.md`. An existing regular `CLAUDE.md` is preserved.
 
-- `~/.claude/skills`
-- `~/.codex/skills`
+### Hermes
 
-Existing skills installed elsewhere are left untouched. They are not imported into this repository, and they are not exposed to Claude by this installer.
+Hermes keeps ownership of `~/.hermes/skills`. The installer does not place
+links there. Instead, it adds this repository's canonical `skills/` directory
+to `skills.external_dirs` in `~/.hermes/config.yaml`.
+
+Hermes can edit skills found in an external directory when explicitly asked to
+use its skill-management actions. Set `skills.write_approval: true` in the
+Hermes configuration if every such write should require approval.
+
+If an existing `skills.external_dirs` value is a scalar rather than a YAML
+list, the installer leaves it untouched and prints the exact directory to add.
 
 ## Uninstall
 
@@ -32,32 +61,16 @@ Existing skills installed elsewhere are left untouched. They are not imported in
 ./uninstall.sh
 ```
 
+Uninstall removes only links and the Hermes configuration entry managed by
+this repository. Foreign skills and configuration remain in place.
+
 ## Tests
 
-The `install.sh` and `uninstall.sh` scripts are covered by a
-[bats](https://github.com/bats-core/bats-core) test suite in `tests/`. It runs
-each script against a throwaway sandbox `HOME`, so it never touches your real
-Claude or Codex configuration.
-
-Requires `bats` and GNU Stow:
+The installer and uninstaller have a
+[Bats](https://github.com/bats-core/bats-core) test suite that runs entirely in
+temporary directories.
 
 ```bash
+brew install bats-core
 ./tests/run.sh
 ```
-
-## Planned
-
-### Software Engineering
-
-Skills that improve agent capabilities across the development lifecycle:
-
-- **Planning** — breaking down problems, scoping work, creating implementation plans
-- **Design** — system architecture, API design, technical decision-making
-- **Development** — writing, reviewing, and refactoring code
-
-### Note-Taking & Knowledge Management
-
-Skills for capturing and organising notes, particularly with tools like Obsidian:
-
-- **Note capture** — structuring and formatting notes from conversations
-- **Knowledge linking** — connecting ideas across notes and projects

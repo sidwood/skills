@@ -3,28 +3,15 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
-require_stow
+validate_skill_catalog
 
-# Remove repo skill symlinks from Claude and Codex.
-mkdir -p "$CLAUDE_SKILLS_DIR"
-mkdir -p "$CODEX_SKILLS_DIR"
-
-stow_skills -D
+for skills_dir in "${SKILLS_TARGET_DIRS[@]}"; do
+  remove_catalog_links_from_target "$skills_dir"
+done
 
 remove_legacy_links
-
-# Remove AGENTS.md symlink if it points to this repo
-if [ -L "$CLAUDE_HOME/CLAUDE.md" ] && [ "$(readlink "$CLAUDE_HOME/CLAUDE.md")" = "$REPO_DIR/AGENTS.md" ]; then
-  rm "$CLAUDE_HOME/CLAUDE.md"
-fi
-
-# Remove skills directories only when empty. Leaving non-empty directories
-# untouched is expected, but any other rmdir failure (e.g. permissions) should
-# surface rather than be swallowed.
-for skills_dir in "$CLAUDE_SKILLS_DIR" "$CODEX_SKILLS_DIR"; do
-  if [ -d "$skills_dir" ] && [ -z "$(ls -A "$skills_dir")" ]; then
-    rmdir "$skills_dir"
-  fi
-done
+remove_claude_instructions
+unconfigure_hermes
+remove_empty_skill_directories
 
 echo "Skills uninstalled successfully."

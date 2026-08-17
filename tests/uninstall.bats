@@ -10,68 +10,73 @@ teardown() {
   teardown_sandbox
 }
 
-@test "uninstall: exits with an error when stow is missing" {
-  local bindir
-  bindir="$(make_stowless_path)"
-  run env PATH="$bindir" bash "$REPO_ROOT/uninstall.sh"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"GNU Stow is required"* ]]
-}
-
-@test "uninstall: removes skill symlinks created by install" {
+@test "uninstall: removes repository skill links from every target" {
   run_install
   [ "$status" -eq 0 ]
   run_uninstall
   [ "$status" -eq 0 ]
-  [ ! -e "$CLAUDE_SKILLS_DIR/bug-report" ]
-  [ ! -e "$CLAUDE_SKILLS_DIR/commit-message" ]
-  [ ! -e "$CODEX_SKILLS_DIR/bug-report" ]
+  [ ! -L "$AGENTS_SKILLS_DIR/bug-report" ]
+  [ ! -L "$CLAUDE_SKILLS_DIR/commit-message" ]
+  [ ! -L "$GROK_SKILLS_DIR/to-prd" ]
 }
 
-@test "uninstall: removes the CLAUDE.md symlink pointing at this repo" {
+@test "uninstall: removes repository Claude instructions" {
   run_install
   [ "$status" -eq 0 ]
-  [ -L "$CLAUDE_HOME/CLAUDE.md" ]
   run_uninstall
   [ "$status" -eq 0 ]
-  [ ! -e "$CLAUDE_HOME/CLAUDE.md" ]
+  [ ! -L "$CLAUDE_HOME/CLAUDE.md" ]
 }
 
-@test "uninstall: leaves a foreign CLAUDE.md symlink untouched" {
-  mkdir -p "$CLAUDE_HOME"
+@test "uninstall: leaves foreign links untouched" {
+  mkdir -p "$CLAUDE_HOME" "$AGENTS_SKILLS_DIR"
   ln -s "$SANDBOX/other-agents.md" "$CLAUDE_HOME/CLAUDE.md"
+  ln -s "$SANDBOX/foreign-skill" "$AGENTS_SKILLS_DIR/bug-report"
   run_uninstall
   [ "$status" -eq 0 ]
   assert_symlink_to "$CLAUDE_HOME/CLAUDE.md" "$SANDBOX/other-agents.md"
+  assert_symlink_to "$AGENTS_SKILLS_DIR/bug-report" "$SANDBOX/foreign-skill"
 }
 
-@test "uninstall: removes empty skills directories" {
+@test "uninstall: removes empty skill directories" {
   run_install
   [ "$status" -eq 0 ]
   run_uninstall
   [ "$status" -eq 0 ]
+  [ ! -d "$AGENTS_SKILLS_DIR" ]
   [ ! -d "$CLAUDE_SKILLS_DIR" ]
-  [ ! -d "$CODEX_SKILLS_DIR" ]
+  [ ! -d "$GROK_SKILLS_DIR" ]
 }
 
-@test "uninstall: leaves non-empty skills directories" {
+@test "uninstall: leaves non-empty skill directories" {
   run_install
   [ "$status" -eq 0 ]
-  touch "$CLAUDE_SKILLS_DIR/foreign-skill"
+  printf 'foreign\n' > "$CLAUDE_SKILLS_DIR/foreign-skill"
   run_uninstall
   [ "$status" -eq 0 ]
   [ -f "$CLAUDE_SKILLS_DIR/foreign-skill" ]
 }
 
-@test "uninstall: removes a legacy renamed-skill link pointing into the repo" {
+@test "uninstall: removes only its Hermes external directory entry" {
+  mkdir -p "$HERMES_HOME"
+  printf 'skills:\n  external_dirs:\n    - /existing/skills\n' > "$HERMES_CONFIG_FILE"
+  run_install
+  [ "$status" -eq 0 ]
+  run_uninstall
+  [ "$status" -eq 0 ]
+  grep -Fq '    - /existing/skills' "$HERMES_CONFIG_FILE"
+  ! grep -Fq "$REPO_ROOT/skills" "$HERMES_CONFIG_FILE"
+}
+
+@test "uninstall: removes renamed-skill links owned by the repository" {
   mkdir -p "$CLAUDE_SKILLS_DIR"
   ln -s "$REPO_ROOT/caveman" "$CLAUDE_SKILLS_DIR/caveman"
   run_uninstall
   [ "$status" -eq 0 ]
-  [ ! -e "$CLAUDE_SKILLS_DIR/caveman" ]
+  [ ! -L "$CLAUDE_SKILLS_DIR/caveman" ]
 }
 
-@test "uninstall: is idempotent when run twice" {
+@test "uninstall: is idempotent" {
   run_install
   [ "$status" -eq 0 ]
   run_uninstall

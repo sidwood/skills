@@ -1,18 +1,17 @@
 # Shared helpers for install/uninstall bats tests.
 
-# Absolute path to the repository root (parent of the tests directory).
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
-# Create an isolated fake HOME with separate Claude and Codex trees, and export
-# the environment variables the scripts honour so nothing touches the real HOME.
 setup_sandbox() {
   SANDBOX="$(mktemp -d)"
-  export HOME="$SANDBOX/home"
+  export AGENTS_SKILLS_DIR="$SANDBOX/agents/skills"
   export CLAUDE_HOME="$SANDBOX/claude"
   export CLAUDE_SKILLS_DIR="$CLAUDE_HOME/skills"
-  export CODEX_HOME="$SANDBOX/codex"
-  export CODEX_SKILLS_DIR="$CODEX_HOME/skills"
-  mkdir -p "$HOME"
+  export GROK_HOME="$SANDBOX/grok"
+  export GROK_SKILLS_DIR="$GROK_HOME/skills"
+  export LEGACY_CODEX_SKILLS_DIR="$SANDBOX/codex/skills"
+  export HERMES_HOME="$SANDBOX/hermes"
+  export HERMES_CONFIG_FILE="$HERMES_HOME/config.yaml"
 }
 
 teardown_sandbox() {
@@ -27,31 +26,37 @@ run_uninstall() {
   run bash "$REPO_ROOT/uninstall.sh"
 }
 
-# Build a PATH directory that contains the given commands but deliberately
-# excludes "stow", so we can exercise the "stow missing" error branch while the
-# scripts can still resolve dirname/basename/etc.
-make_stowless_path() {
-  local bindir="$SANDBOX/nostow-bin"
-  mkdir -p "$bindir"
-  local cmd src
-  for cmd in bash dirname basename readlink mkdir rm ln cd pwd rmdir cat env; do
-    src="$(command -v "$cmd" 2>/dev/null || true)"
-    [ -n "$src" ] && ln -sf "$src" "$bindir/$cmd"
-  done
-  echo "$bindir"
-}
-
-# Assert that $link is a symlink whose resolved target equals $target.
 assert_symlink_to() {
-  local link="$1" target="$2"
+  local link="$1"
+  local target="$2"
+
   [ -L "$link" ] || {
     echo "expected symlink at: $link" >&2
     return 1
   }
-  local resolved
-  resolved="$(cd "$(dirname "$link")" && readlink -f "$link")"
-  [ "$resolved" = "$target" ] || {
-    echo "symlink $link -> $resolved, expected $target" >&2
+
+  [ "$(readlink "$link")" = "$target" ] || {
+    echo "symlink $link -> $(readlink "$link"), expected $target" >&2
     return 1
   }
+}
+
+assert_catalog_links() {
+  local target_dir="$1"
+
+  assert_symlink_to \
+    "$target_dir/bug-report" \
+    "$REPO_ROOT/skills/engineering/bug-report"
+  assert_symlink_to \
+    "$target_dir/to-prd" \
+    "$REPO_ROOT/skills/product/to-prd"
+  assert_symlink_to \
+    "$target_dir/grilling" \
+    "$REPO_ROOT/skills/workflow/grilling"
+  assert_symlink_to \
+    "$target_dir/to-skill" \
+    "$REPO_ROOT/skills/authoring/to-skill"
+  assert_symlink_to \
+    "$target_dir/rpg-scenario-beats" \
+    "$REPO_ROOT/skills/creative/rpg-scenario-beats"
 }

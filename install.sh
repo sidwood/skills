@@ -9,19 +9,10 @@ if git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null; then
   git -C "$REPO_DIR" config core.hooksPath .githooks
 fi
 
-require_stow
-
-# Create skills target directories.
-mkdir -p "$CLAUDE_SKILLS_DIR"
-mkdir -p "$CODEX_SKILLS_DIR"
-
-# Symlink repo skills into Claude and Codex.
-# shellcheck disable=SC2119 # no extra Stow flags needed when installing
-stow_skills
-
+validate_skill_catalog
+install_skill_links
 remove_legacy_links
+install_claude_instructions
+configure_hermes
 
-# Symlink AGENTS.md as ~/.claude/CLAUDE.md
-ln -sf "$REPO_DIR/AGENTS.md" "$CLAUDE_HOME/CLAUDE.md"
-
-echo "Skills installed successfully."
+echo "Skills installed for Codex, Claude, Grok, Kimi, Cursor, OpenCode, Pi, and Hermes."

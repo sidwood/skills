@@ -1,8 +1,6 @@
 ---
 name: commit-message
 description: Use when the user wants to commit, is writing, amending, or rewording a commit message, or asks how to format, structure, or word a commit message.
-metadata:
-  smokefree-invocation: both
 ---
 
 # Commit Messages
@@ -11,7 +9,7 @@ Write an imperative subject plus optional body, held to the 50/72 rule.
 
 ## Workflow
 
-1. Subject: capitalised, imperative mood, ≤ 50 characters. It completes "If applied, this commit will __" — "Add feature", "Fix bug", "Remove deprecated method", never "Added"/"Fixes"/"Removing".
+1. Subject: capitalized, imperative mood, ≤ 50 characters. It completes "If applied, this commit will __" — "Add feature", "Fix bug", "Remove deprecated method", never "Added"/"Fixes"/"Removing".
 2. Self-explanatory change? Subject only, no body.
 3. Else: blank line, then body wrapped at 72 characters explaining why, not what — the diff already shows what. Flag non-obvious consequences.
 4. Body lists: hyphen or asterisk + single space, blank line between bullets, hanging indent on wraps.
@@ -21,7 +19,7 @@ Done when the subject is an imperative ≤ 50 chars and any body is why-focused,
 ## Template
 
 ```text
-Capitalised imperative subject, 50 chars or less
+Capitalized imperative subject, 50 chars or less
 
 Body explaining why, not what. Wrap at 72 characters. The blank line
 separating subject from body is critical — tools like rebase confuse
