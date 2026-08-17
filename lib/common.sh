@@ -21,6 +21,7 @@ STOW_IGNORES=(
   --ignore='\.git'
   --ignore='\.githooks'
   --ignore='\.markdownlint\.json'
+  --ignore='\.pre-commit-config\.yaml'
   --ignore='\.vscode'
 )
 

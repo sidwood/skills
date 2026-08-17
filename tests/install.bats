@@ -43,6 +43,7 @@ teardown() {
   [ ! -e "$CLAUDE_SKILLS_DIR/lib" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/tests" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/.githooks" ]
+  [ ! -e "$CLAUDE_SKILLS_DIR/.pre-commit-config.yaml" ]
   [ ! -e "$CODEX_SKILLS_DIR/AGENTS.md" ]
 }
 
