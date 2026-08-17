@@ -1,0 +1,5 @@
+interface:
+  display_name: "To Spec"
+  short_description: "Turn settled decisions into a specification"
+policy:
+  allow_implicit_invocation: false
