@@ -1,7 +1,6 @@
 ---
 name: compress-a-skill
 description: Use when authoring or editing a skill (or other context-window artefact) and you want to cut its token cost; when the user invokes /compress-a-skill or says "compress this skill", "tighten this skill", "reduce skill tokens".
-disable-model-invocation: true
 ---
 
 One-shot pass: shrink target skill tokens, preserve behaviour.
