@@ -1,0 +1,5 @@
+interface:
+  display_name: "Diagnosing Bugs"
+  short_description: "Prove root causes with tight feedback loops"
+policy:
+  allow_implicit_invocation: true
