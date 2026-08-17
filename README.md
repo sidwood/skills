@@ -22,6 +22,7 @@ so `skills/engineering/commit-message` is installed as `commit-message`.
 ## Install
 
 ```bash
+brew install pre-commit
 ./install.sh
 ```
 
@@ -41,6 +42,14 @@ The installer also migrates this repository's old links out of
 
 Claude receives this repository's `AGENTS.md` through
 `~/.claude/CLAUDE.md`. An existing regular `CLAUDE.md` is preserved.
+
+The repository-managed Git hooks run two validation stages:
+
+- `pre-commit` delegates staged-file checks to `.pre-commit-config.yaml`,
+  currently ShellCheck and Gitleaks.
+- `commit-msg` enforces the repository's commit-message convention.
+
+The first pre-commit run downloads and caches the pinned hook environments.
 
 ### Hermes
 

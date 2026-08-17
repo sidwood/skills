@@ -65,7 +65,8 @@ teardown() {
   run_uninstall
   [ "$status" -eq 0 ]
   grep -Fq '    - /existing/skills' "$HERMES_CONFIG_FILE"
-  ! grep -Fq "$REPO_ROOT/skills" "$HERMES_CONFIG_FILE"
+  run grep -Fq "$REPO_ROOT/skills" "$HERMES_CONFIG_FILE"
+  [ "$status" -eq 1 ]
 }
 
 @test "uninstall: removes renamed-skill links owned by the repository" {
