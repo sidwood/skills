@@ -54,6 +54,15 @@ teardown() {
   [ ! -d "$CODEX_SKILLS_DIR" ]
 }
 
+@test "uninstall: leaves non-empty skills directories" {
+  run_install
+  [ "$status" -eq 0 ]
+  touch "$CLAUDE_SKILLS_DIR/foreign-skill"
+  run_uninstall
+  [ "$status" -eq 0 ]
+  [ -f "$CLAUDE_SKILLS_DIR/foreign-skill" ]
+}
+
 @test "uninstall: removes a legacy renamed-skill link pointing into the repo" {
   mkdir -p "$CLAUDE_SKILLS_DIR"
   ln -s "$REPO_ROOT/caveman" "$CLAUDE_SKILLS_DIR/caveman"

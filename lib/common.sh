@@ -49,7 +49,10 @@ remove_link_if_target() {
       resolved_target="$link_target"
       ;;
     *)
-      resolved_dir="$(cd "$(dirname "$link_path")" && cd "$(dirname "$link_target")" && pwd -P)"
+      if ! resolved_dir="$(cd "$(dirname "$link_path")" && cd "$(dirname "$link_target")" 2>/dev/null && pwd -P)"; then
+        echo "Warning: could not resolve symlink target for '$link_path'; skipping." >&2
+        return 0
+      fi
       resolved_target="$resolved_dir/$(basename "$link_target")"
       ;;
   esac

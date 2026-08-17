@@ -83,3 +83,12 @@ teardown() {
   [ "$status" -eq 0 ]
   assert_symlink_to "$CLAUDE_SKILLS_DIR/write-a-prd" "$SANDBOX/somewhere-else"
 }
+
+@test "install: skips an unresolvable legacy link" {
+  mkdir -p "$CLAUDE_SKILLS_DIR"
+  ln -s "missing/target" "$CLAUDE_SKILLS_DIR/write-a-prd"
+  run_install
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"could not resolve symlink target"* ]]
+  [ -L "$CLAUDE_SKILLS_DIR/write-a-prd" ]
+}
