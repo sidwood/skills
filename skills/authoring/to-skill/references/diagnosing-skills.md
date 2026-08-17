@@ -20,7 +20,7 @@ Root virtue is **predictability** — agent takes the same *process* every run. 
 
 ## Invocation failures
 
-- **Wrong load** — rare skill kept model-invoked pays permanent context load for reach it doesn't need. *Cure:* make it user-invoked (`disable-model-invocation: true`); reach by name.
+- **Wrong load** — rare skill kept model-invoked pays permanent context load for reach it doesn't need. *Cure:* make it user-invoked in every target harness (`disable-model-invocation: true` plus Codex's `allow_implicit_invocation: false`); reach it explicitly by name or selector.
 - **Weak trigger** — must-have skill/reference behind a vague pointer fires unreliably. Pointer *wording*, not target, decides when agent reaches it. *Cure:* sharpen wording (description or in-body pointer) before restructuring.
 - **Router overload** — too many user-invoked skills for the human to remember. *Cure:* a router skill naming the rest + when to reach each.
 

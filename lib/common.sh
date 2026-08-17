@@ -4,7 +4,7 @@
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LIB_DIR/.." && pwd)"
-SKILLS_ROOT="$REPO_DIR/skills"
+SKILLS_ROOT="${SKILLS_ROOT:-$REPO_DIR/skills}"
 
 # Most supported agents share the Agent Skills standard location. Claude and
 # Grok use their own global directories.
@@ -38,6 +38,22 @@ LEGACY_SKILLS=(
   caveman
 )
 
+# Print one frontmatter value without parsing body content.
+frontmatter_value() {
+  local key="$1"
+  local skill_file="$2"
+
+  awk -v key="$key" '
+    NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+    in_frontmatter && $0 == "---" { exit }
+    in_frontmatter && index($0, key ":") == 1 {
+      sub("^" key ":[[:space:]]*", "")
+      print
+      exit
+    }
+  ' "$skill_file"
+}
+
 # Print canonical skill directories in a stable order. The repository taxonomy
 # is two levels deep: skills/<category>/<skill>/SKILL.md.
 catalog_skill_dirs() {
@@ -48,37 +64,178 @@ catalog_skill_dirs() {
     done
 }
 
-# Fail early if a skill is misplaced, misnamed, or duplicates another skill.
+# Fail early when catalog structure, metadata, references, or invocation policy
+# would make a skill ambiguous or behave differently between harnesses.
 validate_skill_catalog() {
+  local all_skill_files
+  local category
+  local description
   local duplicates
+  local empty_optional_dirs
+  local explicit_frontmatter
+  local explicit_openai
   local frontmatter_name
+  local license_file
+  local license_path
+  local openai_file
+  local reference_link
+  local reference_links
+  local relative_path
+  local remainder
+  local singular_reference_dirs
   local skill_dir
+  local skill_file
   local skill_name
   local skill_names
+  local skill_parent_dir
+  local top_level_dir
 
   if [ ! -d "$SKILLS_ROOT" ]; then
     echo "Error: skill catalog not found at '$SKILLS_ROOT'." >&2
     return 1
   fi
 
-  skill_names="$({
-    while IFS= read -r skill_dir; do
-      skill_name="$(basename "$skill_dir")"
-      frontmatter_name="$(sed -n 's/^name:[[:space:]]*//p' "$skill_dir/SKILL.md" | head -n 1)"
-
-      if [ "$frontmatter_name" != "$skill_name" ]; then
-        echo "Error: '$skill_dir/SKILL.md' declares name '$frontmatter_name'; expected '$skill_name'." >&2
+  while IFS= read -r top_level_dir; do
+    category="$(basename "$top_level_dir")"
+    case "$category" in
+      product | engineering | workflow | authoring | creative) ;;
+      *)
+        echo "Error: unknown skill category '$category'." >&2
         return 1
-      fi
+        ;;
+    esac
+  done < <(find "$SKILLS_ROOT" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort)
 
-      printf '%s\n' "$skill_name"
-    done < <(catalog_skill_dirs)
-  })" || return 1
+  while IFS= read -r skill_parent_dir; do
+    if [ ! -f "$skill_parent_dir/SKILL.md" ]; then
+      echo "Error: skill directory '$skill_parent_dir' has no SKILL.md." >&2
+      return 1
+    fi
+  done < <(find "$SKILLS_ROOT" -mindepth 2 -maxdepth 2 -type d -print | LC_ALL=C sort)
 
-  if [ -z "$skill_names" ]; then
+  singular_reference_dirs="$(find "$SKILLS_ROOT" -type d -name reference -print | LC_ALL=C sort)"
+  if [ -n "$singular_reference_dirs" ]; then
+    echo "Error: use 'references/' rather than 'reference/':" >&2
+    printf '%s\n' "$singular_reference_dirs" >&2
+    return 1
+  fi
+
+  empty_optional_dirs="$(find "$SKILLS_ROOT" -type d \
+    \( -name agents -o -name assets -o -name references -o -name scripts \) \
+    -empty -print | LC_ALL=C sort)"
+  if [ -n "$empty_optional_dirs" ]; then
+    echo "Error: remove empty optional skill directories:" >&2
+    printf '%s\n' "$empty_optional_dirs" >&2
+    return 1
+  fi
+
+  all_skill_files="$(find "$SKILLS_ROOT" -type f -name SKILL.md -print | LC_ALL=C sort)"
+  if [ -z "$all_skill_files" ]; then
     echo "Error: no skills found under '$SKILLS_ROOT'." >&2
     return 1
   fi
+
+  skill_names=""
+  while IFS= read -r skill_file; do
+      relative_path="${skill_file#"$SKILLS_ROOT"/}"
+      category="${relative_path%%/*}"
+      remainder="${relative_path#*/}"
+      skill_name="${remainder%%/*}"
+
+      if [ "$remainder" != "$skill_name/SKILL.md" ]; then
+        echo "Error: '$skill_file' must be at skills/<category>/<skill>/SKILL.md." >&2
+        return 1
+      fi
+
+      case "$category" in
+        product | engineering | workflow | authoring | creative) ;;
+        *)
+          echo "Error: '$skill_file' uses unknown category '$category'." >&2
+          return 1
+          ;;
+      esac
+
+      if [[ ! "$skill_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || [ "${#skill_name}" -gt 64 ]; then
+        echo "Error: invalid skill folder name '$skill_name'." >&2
+        return 1
+      fi
+
+      skill_dir="$(dirname "$skill_file")"
+      skill_name="$(basename "$skill_dir")"
+      if [ "$(sed -n '1p' "$skill_file")" != "---" ] || ! awk '
+        NR > 1 && $0 == "---" { found = 1; exit }
+        END { exit !found }
+      ' "$skill_file"; then
+        echo "Error: '$skill_file' has invalid YAML frontmatter delimiters." >&2
+        return 1
+      fi
+
+      frontmatter_name="$(frontmatter_value name "$skill_file")"
+      description="$(frontmatter_value description "$skill_file")"
+
+      if [ "$frontmatter_name" != "$skill_name" ]; then
+        echo "Error: '$skill_file' declares name '$frontmatter_name'; expected '$skill_name'." >&2
+        return 1
+      fi
+
+      if [ -z "$description" ]; then
+        echo "Error: '$skill_file' must declare a non-empty description." >&2
+        return 1
+      fi
+
+      license_file="$(frontmatter_value license "$skill_file")"
+      if [ -n "$license_file" ]; then
+        license_file="${license_file%\"}"
+        license_file="${license_file%\'}"
+        license_file="${license_file#\"}"
+        license_file="${license_file#\'}"
+        license_path="$skill_dir/$license_file"
+        if [ ! -f "$license_path" ]; then
+          echo "Error: '$skill_file' refers to missing license '$license_file'." >&2
+          return 1
+        fi
+      fi
+
+      reference_links="$(awk '
+        /^```/ { in_fence = !in_fence; next }
+        !in_fence {
+          while (match($0, /\]\(references\/[^)#[:space:]]+/)) {
+            print substr($0, RSTART + 2, RLENGTH - 2)
+            $0 = substr($0, RSTART + RLENGTH)
+          }
+        }
+      ' "$skill_file")"
+      while IFS= read -r reference_link; do
+        [ -n "$reference_link" ] || continue
+        if [ ! -f "$skill_dir/$reference_link" ]; then
+          echo "Error: '$skill_file' refers to missing '$reference_link'." >&2
+          return 1
+        fi
+      done <<< "$reference_links"
+
+      explicit_frontmatter=false
+      if [ "$(frontmatter_value disable-model-invocation "$skill_file")" = "true" ]; then
+        explicit_frontmatter=true
+      fi
+
+      openai_file="$skill_dir/agents/openai.yaml"
+      explicit_openai=false
+      if [ -f "$openai_file" ] && grep -Eq \
+        '^[[:space:]]+allow_implicit_invocation:[[:space:]]*false[[:space:]]*$' \
+        "$openai_file"; then
+        explicit_openai=true
+      fi
+
+      if [ "$explicit_frontmatter" != "$explicit_openai" ]; then
+        echo "Error: '$skill_name' must encode explicit invocation in both SKILL.md and agents/openai.yaml." >&2
+        return 1
+      fi
+
+      if [ -n "$skill_names" ]; then
+        skill_names+=$'\n'
+      fi
+      skill_names+="$skill_name"
+  done <<< "$all_skill_files"
 
   duplicates="$(printf '%s\n' "$skill_names" | LC_ALL=C sort | uniq -d)"
   if [ -n "$duplicates" ]; then

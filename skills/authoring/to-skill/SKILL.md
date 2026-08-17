@@ -5,51 +5,73 @@ description: Use when creating, writing, editing, or auditing an agent skill, au
 
 # Writing Skills
 
-Skill makes agent behave **same way every run** — same process, not same output.
-**Predictability** is the goal; every rule below is a lever on it.
+A skill makes an agent follow the **same process**, not produce the same output.
+**Predictability** is the goal; every instruction should improve it.
 
 ## Process
 
-1. **Gather reqs** — task/domain? use cases (branches)? scripts or instructions? reference material?
-2. **Watch baseline** — see how agent handles task *without* skill. Teach only what it gets wrong; the rest is no-op tokens (see Pitfalls).
-3. **Draft** — `SKILL.md` (frontmatter + playbook body); reference files only for conditional content; scripts only for deterministic ops (validation, formatting).
-4. **Verify** — cold-start test (fresh session picks it up from natural task, follows it) + checklist below.
+1. **Gather requirements** — establish the task, branches, invocation mode,
+   permissions, reference material, and whether deterministic scripts are useful.
+2. **Watch the baseline** — observe how an agent handles the task without the
+   skill. Teach only what it gets wrong; everything else is no-op context.
+3. **Draft** — write the smallest playbook that preserves the user's scope and
+   choices. Add optional resources only when they materially improve execution.
+4. **Validate** — check structure and metadata, execute changed scripts, and
+   verify observable behavior rather than headings or generated wording.
+5. **Forward-test** — when complexity or risk warrants it, use a fresh evaluator
+   in an isolated workspace without revealing the expected answer or suspected
+   defect. Finish when realistic requests produce the intended process.
 
 ## Folder structure
 
 ```text
 skill-name/
   SKILL.md              # entry point (required)
-  reference/            # conditional docs (optional)
+  agents/               # harness metadata and invocation policy (optional)
+    openai.yaml
   scripts/              # deterministic helpers (optional)
+  references/           # conditional documentation (optional)
+  assets/               # templates or output resources (optional)
 ```
+
+Create no optional directory until it has a concrete file and purpose. A skill
+does not need its own README, changelog, or installation guide unless packaging
+requires one.
 
 ## Choose invocation first
 
-Every skill pays one of two loads. Decide before writing.
+Every skill pays one of two loads. Decide before writing and preserve an
+existing skill's policy unless the user asks to change it.
 
-- **Model-invoked** (keep `description`): agent triggers it. Costs **context load** — description sits in window every turn.
-- **User-invoked** (`disable-model-invocation: true`): human triggers by name. Zero context load, but costs **cognitive load** — human must remember it.
+- **Model-invoked**: natural-language requests matching `description` may load
+  the skill. Omit `disable-model-invocation`; when `agents/openai.yaml` exists,
+  set Codex's `allow_implicit_invocation: true`.
+- **User-invoked**: the human must explicitly select or name the skill. Set
+  `disable-model-invocation: true` in `SKILL.md` frontmatter and set Codex's
+  `agents/openai.yaml` policy to `allow_implicit_invocation: false`.
 
-Model-invoked only when agent must reach it alone. Else user-invoked, no context load. User-invoked skills pile up past memory -> add one *router* skill naming the rest.
+Model-invoked only when the agent must reach the skill by itself. Otherwise use
+explicit invocation and accept the cognitive cost of remembering its name.
+When explicit skills become hard to remember, add one router skill.
 
-## Write the description (triggers only)
+## Write the description
 
-Model-invoked: description is the whole routing layer.
+For model-invoked skills, `description` is the routing layer.
 
-- State **only when to trigger** — verbs, nouns, symptoms, contexts the user says. Never summarize workflow.
-- **Why:** workflow in description -> agent follows it *instead of* reading body. Description said "review between tasks" -> one review; body wanted two. Strip process -> agent reads real thing.
-- Lead with user's words. Third person. Max 1024 chars.
+- State only when to trigger: the verbs, nouns, symptoms, and contexts the user
+  supplies. Put workflow in the body so the agent reads the real instructions.
+- Lead with the user's words, write in the third person, and stay under 1,024
+  characters. Add exclusions only when they prevent likely misrouting.
 
 ```text
-# Vague -> never fires
+# Vague
 description: Helps with documents.
 
-# Summarizes workflow -> agent shortcuts, skips body
-description: Use when working with PDFs — extract text, fill forms, then merge.
+# Summarizes workflow
+description: Use with PDFs — extract text, fill forms, then merge.
 
-# Triggers only -> agent reads body for the how
-description: Use when working with PDF files, or user mentions PDFs, forms, extraction.
+# Triggers only
+description: Use when working with PDF files, forms, or extraction.
 ```
 
 ## Template
@@ -57,68 +79,78 @@ description: Use when working with PDF files, or user mentions PDFs, forms, extr
 ```md
 ---
 name: skill-name
-description: Use when [triggers, symptoms, contexts user says].
+description: Use when [triggers, symptoms, or contexts the user supplies].
 ---
 
 # Skill Name
 
-[One line: what agent predictably does, anchored on a leading word.]
+[One line describing the predictable outcome, anchored on a leading word.]
 
 ## Workflow
 
-[Numbered steps — playbook, not essay. Each ends on checkable, exhaustive completion criterion.]
+[Numbered steps ending in checkable, exhaustive completion criteria.]
 
 ## Rules
 
 [Short, concrete, positive constraints.]
 
-When [edge case], see [reference/topic.md](reference/topic.md).
+When [edge case], see [references/topic.md](references/topic.md).
 ```
 
-## Progressive disclosure (conditional references)
+## Progressive disclosure
 
-Reference files **not** auto-loaded — agent decides to read them. Disclosure works only when pointer is *conditional*:
+Reference files are not auto-loaded. Point to one only when its branch applies:
 
-- **Defeats purpose:** "Step 1: read reference/spec.md" -> always loaded.
-- **Real disclosure:** "If [edge case], see reference/spec.md" -> loaded only when needed.
+- **Always loaded:** “Step 1: read `references/spec.md`.”
+- **Conditional:** “For database migrations, read `references/schema.md`.”
 
-Split to a reference file only when: body handles ~80% of invocations without it, content is edge-case/one-branch, exceeds ~100 lines. Most invocations need it -> keep inline (splitting adds indirection, no saving). Must-have pointer fires unreliably -> sharpen its *wording* before inlining.
+Split content when the body handles about 80% of invocations without it and the
+remainder is a genuine branch or substantial example. Keep common instructions
+inline. Sharpen an unreliable pointer before abandoning progressive disclosure.
 
-## Leading words
+## Resources
 
-Anchor behavior to a concept already in the model's pretraining (*tracer bullets*, *fog of war*, *baseline*). Repeat the **word**, not a sentence -> accumulates meaning, recruits priors free. Reuse an existing word before coining one; made-up terms recruit no priors, cost definition tokens.
+- Add scripts for repeated deterministic operations, generated code, validation,
+  or failures needing explicit handling. Use environment variables for secrets
+  and execute every new or changed script.
+- Add assets only when files are copied or adapted into the output. Assets are
+  not instructions and should not be loaded unless inspection is necessary.
+- Add `agents/openai.yaml` only for actual interface metadata, dependencies, or
+  invocation policy. Preserve unrelated fields when editing it.
 
-## Steer positively
+## Scope and language
 
-Name the target, not the ban. "Don't think of an elephant" -> elephant fills view; "write one-line comments" beats "never write verbose comments." Keep a prohibition only as a hard guardrail you can't phrase positively, paired with the positive target.
+- Preserve the user's chosen product, assignment, permissions, and external
+  side-effect boundaries. One example or past failure is not a universal rule.
+- Match specificity to risk: fixed sequences for fragile operations; outcomes
+  and decision criteria when several approaches are reasonable.
+- Anchor behavior with familiar leading words such as *baseline* or *tracer
+  bullets*. Reuse an existing term before inventing one.
+- Steer positively. Retain prohibitions only for hard guardrails and pair them
+  with the intended behavior.
+- Write prose in American English. Preserve source spelling in code, identifiers,
+  commands, error strings, and user-facing trigger words.
 
-## Language
+## Editing and validation
 
-Prose in American English (color, center, behavior, license). Verbatim for anything the agent copies literally — code blocks, error strings, identifiers, API/CLI/config names stay as their source spells them (`colour`, `behaviour`, `Referer`). In `description`, match the words the user actually types even when British — triggers optimize for recall, not house style.
+When editing, preserve existing metadata, dependencies, policies, scripts,
+references, and assets unless the requested change makes one obsolete. For an
+audit, use the failure-mode catalog in
+[references/diagnosing-skills.md](references/diagnosing-skills.md).
 
-## Adding scripts
-
-Add scripts for deterministic ops, code regenerated repeatedly, or errors needing explicit handling. Scripts save tokens, beat generated code on reliability. Never hardcode secrets — skills get shared; use env vars.
-
-## Pitfalls
-
-- **Vague descriptions never fire.** "Helpful utilities" says nothing.
-- **No-ops cost tokens.** Agent already does it by default -> cut the line.
-- **Monolithic bodies defeat disclosure** — split only truly conditional content.
-- **Too many model-invoked skills bloat the router.** Every description loads all session. Merge overlapping skills; make rare ones user-invoked.
-
-## Editing an existing skill
-
-Auditing/trimming/debugging -> diagnose against the failure-mode catalog (sediment, no-op, sprawl, duplication, premature completion) in [reference/diagnosing-skills.md](reference/diagnosing-skills.md).
+Run the repository's skill validator when available. Confirm that names match
+folders, descriptions discriminate, reference links resolve, explicit-only
+metadata agrees across harnesses, optional directories are non-empty, and no
+scaffold placeholders or secrets remain.
 
 ## Review checklist
 
-- [ ] Invocation chosen deliberately (model- vs user-invoked)
-- [ ] Description triggers-only, in user's words — no workflow summary
-- [ ] Body a playbook (numbered steps, headings), under ~100 lines
-- [ ] Steps end on checkable completion criteria
-- [ ] Constraints positive, not prohibitions
-- [ ] Prose American English; code, error strings, identifiers verbatim; triggers match user's words
-- [ ] Reference files conditional, not required steps
-- [ ] No secrets, API keys, or stale time-sensitive info
-- [ ] Cold-start test passes
+- [ ] Invocation chosen deliberately and encoded for every target harness
+- [ ] Description contains triggers, not a workflow summary
+- [ ] Body is a concise playbook with checkable completion criteria
+- [ ] User intent, scope, permissions, and existing resources are preserved
+- [ ] Conditional material lives behind precise `references/` pointers
+- [ ] Scripts execute successfully and assets have a concrete consumer
+- [ ] Constraints are positive, specific, and free of no-op advice
+- [ ] Metadata, links, secrets, and stale placeholders are validated
+- [ ] Cold-start testing verifies observable behavior without evaluator priming

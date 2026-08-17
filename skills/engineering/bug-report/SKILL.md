@@ -76,7 +76,7 @@ Use this template:
 
 #### For a breakdown (multiple issues)
 
-If the scope assessment calls for multiple issues, see [reference/breakdown-template.md](reference/breakdown-template.md).
+If the scope assessment calls for multiple issues, see [references/breakdown-template.md](references/breakdown-template.md).
 
 After filing, print all issue URLs (with blocking relationships summarized) and ask: "Next issue, or are we done?"
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 # Use the repository-managed commit-message checks in a Git checkout. Archives
