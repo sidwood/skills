@@ -11,7 +11,7 @@ skill under its unqualified name.
 | Category | Skills |
 | --- | --- |
 | Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd` |
-| Engineering | `bug-report`, `commit-message`, `design-an-interface`, `domain-model`, `improve-codebase-architecture`, `ubiquitous-language` |
+| Engineering | `bug-report`, `commit-message`, `design-an-interface`, `domain-model`, `improve-codebase-architecture`, `migrate-to-shoehorn`, `ubiquitous-language` |
 | Workflow | `compress`, `grilling`, `zoom-out` |
 | Authoring | `compress-a-skill`, `to-skill`, `verify-compression` |
 | Creative | `rpg-scenario-beats` |
