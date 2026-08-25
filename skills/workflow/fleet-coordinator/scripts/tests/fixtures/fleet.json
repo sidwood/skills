@@ -1,0 +1,85 @@
+{
+  "seed": "/tmp/fleet-seed",
+  "seedDefaultBranch": "main",
+  "session": "test-session",
+  "user": "tester",
+  "deploymentContext": "Local dev; P0 is data loss.",
+  "recipes": {
+    "composer-2.5": {
+      "kind": "cursor",
+      "args": ["--model", "composer-2.5", "-f"]
+    },
+    "opus-max": {
+      "kind": "claude",
+      "args": ["--dangerously-skip-permissions", "--model", "opus"]
+    }
+  },
+  "implementerLadder": ["composer-2.5"],
+  "pairings": "opus reviews composer",
+  "gate": {
+    "bootstrap": ["npm ci"],
+    "suites": [
+      {
+        "prefix": "apps/api/",
+        "commands": ["npm test --workspace=api"]
+      },
+      {
+        "prefix": "lib/",
+        "commands": ["npm test -- lib"]
+      },
+      {
+        "prefix": "",
+        "commands": ["npm test"]
+      }
+    ]
+  },
+  "postLandChecks": ["npm run lint"],
+  "landPolicy": "verdict table",
+  "bounceCap": 2,
+  "deferredTag": "(B)",
+  "streams": [
+    {
+      "ticket": "T094.1",
+      "title": "Add fleet scripts",
+      "branch": "fleet/t094-1",
+      "checkout": "/tmp/fleet-clone",
+      "implRecipe": "composer-2.5",
+      "reviewRecipe": "opus-max",
+      "phase": "implementing",
+      "bounceCount": 0,
+      "baseTip": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tip": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reviewRange": "",
+      "problem": "Build the fleet coordinator CLI.",
+      "acceptanceCriteria": [
+        "Prompt subcommand renders templates",
+        "Capture parses verdicts"
+      ],
+      "scopeOut": [
+        {
+          "tag": "(B)",
+          "target": "T100",
+          "description": "Surface migration"
+        }
+      ],
+      "inScopeSummary": "fleet.py and tests only",
+      "doNotHunt": ["Surface live config"],
+      "skippedSuites": [
+        {
+          "suite": "e2e",
+          "claim": "no UI changes in diff"
+        }
+      ],
+      "rulings": [
+        {
+          "id": "no-push",
+          "text": "Never push from fleet scripts."
+        }
+      ],
+      "verdicts": [],
+      "deferrals": [],
+      "agents": {},
+      "approvedTip": null
+    }
+  ]
+}
