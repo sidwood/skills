@@ -1131,10 +1131,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if not getattr(args, "dry_run", False) and argv and "--dry-run" in argv:
-        args.dry_run = True
-    elif not hasattr(args, "dry_run"):
-        args.dry_run = False
     try:
         return args.func(args)
     except FleetError as exc:
