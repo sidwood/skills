@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -914,6 +915,10 @@ def herdr_tab_create(
     return {"tab_id": tab_id, "pane_id": pane_id}
 
 
+AGENT_START_ATTEMPTS = 3
+AGENT_START_RETRY_SECONDS = 3.0
+
+
 def herdr_agent_start(
     config: dict[str, Any],
     name: str,
@@ -937,7 +942,22 @@ def herdr_agent_start(
         ]
         + list(recipe.get("args", []))
     )
-    run_cmd(cmd, dry_run=dry_run)
+    if dry_run:
+        run_cmd(cmd, dry_run=True)
+        return
+    # A pane fresh from tab create may not have an available shell yet;
+    # herdr reports agent_pane_busy. Wait and retry rather than orphan the tab.
+    for attempt in range(1, AGENT_START_ATTEMPTS + 1):
+        result = run_cmd(cmd, check=False)
+        if result.returncode == 0:
+            return
+        output = f"{result.stdout}\n{result.stderr}"
+        if "agent_pane_busy" not in output or attempt == AGENT_START_ATTEMPTS:
+            raise FleetError(
+                f"command failed ({result.returncode}): {' '.join(cmd)}\n"
+                f"{(result.stderr or result.stdout).strip()}"
+            )
+        time.sleep(AGENT_START_RETRY_SECONDS)
 
 
 def herdr_agent_prompt(

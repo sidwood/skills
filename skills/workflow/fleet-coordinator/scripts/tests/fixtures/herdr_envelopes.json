@@ -58,5 +58,12 @@
       },
       "type": "tab_created"
     }
+  },
+  "agent_pane_busy": {
+    "error": {
+      "code": "agent_pane_busy",
+      "message": "agent target pane w1:p99 is not an available shell"
+    },
+    "id": "cli:agent:start"
   }
 }

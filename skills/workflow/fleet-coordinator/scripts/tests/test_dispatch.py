@@ -88,6 +88,56 @@ class DispatchTests(unittest.TestCase):
         config = json.loads(self.config_path.read_text())
         self.assertEqual(config["streams"][0].get("agents"), {})
 
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_agent_start_retries_pane_busy(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        busy = herdr_json(ENVELOPES["agent_pane_busy"])
+        mock_run.side_effect = [
+            completed(["herdr"], returncode=1, stdout=busy),
+            completed(["herdr"]),
+        ]
+        with open(FIXTURES / "fleet.json") as fh:
+            config = json.load(fh)
+        fleet.herdr_agent_start(
+            config, "t094-1-review", "w1:p99", {"kind": "claude", "args": []}
+        )
+        self.assertEqual(mock_run.call_count, 2)
+        mock_sleep.assert_called_once_with(fleet.AGENT_START_RETRY_SECONDS)
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_agent_start_gives_up_after_attempts(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        busy = herdr_json(ENVELOPES["agent_pane_busy"])
+        mock_run.return_value = completed(["herdr"], returncode=1, stdout=busy)
+        with open(FIXTURES / "fleet.json") as fh:
+            config = json.load(fh)
+        with self.assertRaises(fleet.FleetError):
+            fleet.herdr_agent_start(
+                config, "t094-1-review", "w1:p99", {"kind": "claude", "args": []}
+            )
+        self.assertEqual(mock_run.call_count, fleet.AGENT_START_ATTEMPTS)
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_agent_start_other_error_raises_immediately(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        mock_run.return_value = completed(
+            ["herdr"], returncode=1, stderr="agent name already in use"
+        )
+        with open(FIXTURES / "fleet.json") as fh:
+            config = json.load(fh)
+        with self.assertRaises(fleet.FleetError):
+            fleet.herdr_agent_start(
+                config, "t094-1-review", "w1:p99", {"kind": "claude", "args": []}
+            )
+        self.assertEqual(mock_run.call_count, 1)
+        mock_sleep.assert_not_called()
+
     @mock.patch("subprocess.run")
     def test_herdr_tab_create_parses_envelope(self, mock_run: mock.Mock) -> None:
         mock_run.return_value = completed(
