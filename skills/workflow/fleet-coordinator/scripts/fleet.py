@@ -446,7 +446,7 @@ FINDING_RE_ALT = re.compile(
 APPROVE_RE = re.compile(r"^APPROVE:\s*(yes|no)\s*$", re.IGNORECASE | re.MULTILINE)
 REVIEW_READY_RE = re.compile(r"REVIEW-READY", re.IGNORECASE)
 REVIEW_READY_TIP_RE = re.compile(
-    r"(?:^|\n)(?:new\s+)?tip(?:\s+SHA)?[:\s]+([0-9a-f]{7,40})\b",
+    r"(?:^|[\n\r])(?:REVIEW-READY\s+)?(?:[^\n]*?(?:new\s+)?tip(?:\s+SHA)?(?:\s+is)?\s*:?\s*(?:\*\*)?\s*([0-9a-f]{7,40})\b)",
     re.IGNORECASE,
 )
 PRE_FIX_RE = re.compile(r"pre-fix tip[:\s]+([0-9a-f]{7,40})", re.IGNORECASE)

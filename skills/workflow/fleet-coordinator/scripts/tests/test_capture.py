@@ -38,6 +38,33 @@ class ParseCaptureTests(unittest.TestCase):
         text = "End with exactly one of:\nAPPROVE: yes\nAPPROVE: no\n"
         self.assertIsNone(fleet.parse_approve_verdict(text))
 
+    def test_review_ready_tip_formats(self) -> None:
+        sha = "abc1234567890"
+        checkout = Path("/tmp/unused")
+        cases = [
+            ("newline tip colon", f"Done.\nREVIEW-READY\ntip: {sha}\n"),
+            ("bullet tip", f"Done.\nREVIEW-READY\n- tip: {sha}\n"),
+            ("bullet new tip SHA", f"Done.\nREVIEW-READY\n- new tip SHA: {sha}\n"),
+            ("bold tip", f"Done.\nREVIEW-READY\n**tip:** {sha}\n"),
+            ("indented tip", f"Done.\nREVIEW-READY\n  tip: {sha}\n"),
+            ("same line", f"Done.\nREVIEW-READY tip: {sha}\n"),
+            ("prose new tip SHA", f"Done.\nREVIEW-READY\nThe new tip SHA is {sha}\n"),
+            ("new tip colon", f"Done.\nREVIEW-READY\nnew tip: {sha}\n"),
+            ("indented bullet", f"Done.\nREVIEW-READY\n  - tip: {sha}\n"),
+        ]
+        for label, text in cases:
+            with self.subTest(label=label):
+                with mock.patch.object(fleet, "verify_tip_in_checkout", return_value=sha):
+                    captured = fleet.parse_capture(text, "impl", checkout)
+                self.assertEqual(captured.kind, "review-ready")
+                self.assertEqual(captured.tip, sha)
+
+    def test_review_ready_rejects_unlabeled_hex(self) -> None:
+        sha = "abc1234567890"
+        text = f"Done.\nREVIEW-READY\ncommit {sha} landed\n"
+        with self.assertRaises(fleet.FleetError):
+            fleet.parse_capture(text, "impl", Path("/tmp/unused"))
+
 
 class CaptureTests(unittest.TestCase):
     def setUp(self) -> None:
