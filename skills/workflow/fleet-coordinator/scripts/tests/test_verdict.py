@@ -39,6 +39,18 @@ class VerdictTests(unittest.TestCase):
         stream.update(overrides)
         self.config_path.write_text(json.dumps(config, indent=2) + "\n")
 
+    def test_verdict_commit_land_sets_approved_phase(self) -> None:
+        self.write_stream(
+            phase="verdict-pending",
+            tip="abc1234567890",
+            verdicts=[{"pass": 1, "tip": "abc", "approve": True, "findings": []}],
+        )
+        result = run_fleet("verdict", "T094.1", "--commit")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config = json.loads(self.config_path.read_text())
+        self.assertEqual(config["streams"][0]["phase"], "approved")
+        self.assertEqual(config["streams"][0]["approvedTip"], "abc1234567890")
+
     def test_approve_yes_land(self) -> None:
         self.write_stream(
             phase="verdict-pending",

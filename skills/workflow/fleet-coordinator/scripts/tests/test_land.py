@@ -88,6 +88,43 @@ class LandTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("rebase", result.stderr.lower())
 
+    def test_land_refuses_fetch_head_mismatch(self) -> None:
+        subprocess.run(
+            ["git", "-C", str(self.clone), "commit", "--allow-empty", "-m", "after approval"],
+            check=True,
+            capture_output=True,
+        )
+        new_tip = subprocess.run(
+            ["git", "-C", str(self.clone), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0]["tip"] = new_tip
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        result = run_fleet("land", "T094.1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("FETCH_HEAD", result.stderr)
+        self.assertIn("approved", result.stderr.lower())
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertNotEqual(stream.get("phase"), "landed")
+
+    def test_land_dry_run_after_subcommand(self) -> None:
+        result = run_fleet("land", "T094.1", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("merge", result.stdout)
+
+    def test_land_records_before_post_check_failure(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        config["postLandChecks"] = ['sh -c "exit 1"']
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        result = run_fleet("land", "T094.1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("post-land check failed", result.stderr)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["phase"], "landed")
+
     def test_land_refuses_non_ff(self) -> None:
         (self.seed / "diverge.txt").write_text("d\n")
         subprocess.run(["git", "add", "diverge.txt"], cwd=self.seed, check=True, capture_output=True)

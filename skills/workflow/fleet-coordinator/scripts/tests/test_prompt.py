@@ -169,6 +169,24 @@ class PromptRenderTests(unittest.TestCase):
         self.assertIn("fleet.py:10", text)
         self.assertNotIn("{{", text)
 
+    def test_hard_fail_on_missing_required_config(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        del config["user"]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        out = Path(self.tmp.name) / "bad.txt"
+        result = run_fleet(
+            "--config",
+            str(self.config_path),
+            "prompt",
+            "T094.1",
+            "implementer",
+            "--out",
+            str(out),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("user", result.stderr)
+        self.assertFalse(out.exists())
+
     def test_hard_fail_on_unfilled_placeholder(self) -> None:
         config = json.loads(self.config_path.read_text())
         del config["streams"][0]["title"]
