@@ -1,0 +1,45 @@
+{
+  "agent_list": {
+    "id": "cli:agent:list",
+    "result": {
+      "agents": [
+        {
+          "agent": "cursor",
+          "agent_status": "idle",
+          "name": "t094-1-impl",
+          "pane_id": "w1:p1",
+          "tab_id": "w1:t1"
+        },
+        {
+          "agent": "claude",
+          "agent_status": "done",
+          "name": "t094-1-review",
+          "pane_id": "w1:p2",
+          "tab_id": "w1:t2"
+        }
+      ],
+      "type": "agent_list"
+    }
+  },
+  "agent_not_found": {
+    "error": {
+      "code": "agent_not_found",
+      "message": "agent target t094-1-review not found"
+    },
+    "id": "cli:agent:read"
+  },
+  "tab_create": {
+    "id": "cli:tab:create",
+    "result": {
+      "root_pane": {
+        "pane_id": "w1:p99",
+        "tab_id": "w1:t99"
+      },
+      "tab": {
+        "tab_id": "w1:t99",
+        "label": "T094.1 impl"
+      },
+      "type": "tab_created"
+    }
+  }
+}
