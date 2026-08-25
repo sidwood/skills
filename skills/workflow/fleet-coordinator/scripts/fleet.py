@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ DEFERRED_TAG_DEFAULT = "(B)"
 STYLE_TAG = "(D)"
 SEVERITIES = ("P0", "P1", "P2", "P3")
 BLOCKING_SEVERITIES = ("P0", "P1", "P2")
+REQUIRED_CONFIG_KEYS = ("user", "deploymentContext")
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,8 @@ def save_config(path: Path, config: dict[str, Any], dry_run: bool = False) -> No
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp_name, path)
     except Exception:
         try:
@@ -126,8 +130,10 @@ def git_default_branch(seed: Path, config: dict[str, Any]) -> str:
         return configured
     try:
         return git_output(seed, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").split("/")[-1]
-    except FleetError:
-        return git_output(seed, "branch", "--show-current") or "main"
+    except FleetError as exc:
+        raise FleetError(
+            "seedDefaultBranch not configured and origin/HEAD unavailable"
+        ) from exc
 
 
 def git_is_clean(repo: Path) -> bool:
@@ -312,18 +318,25 @@ def seed_moved_note(config: dict[str, Any], stream: dict[str, Any]) -> str:
     return ""
 
 
+def validate_required_config(config: dict[str, Any]) -> None:
+    missing = [key for key in REQUIRED_CONFIG_KEYS if not config.get(key)]
+    if missing:
+        raise FleetError(f"missing required config: {', '.join(missing)}")
+
+
 def build_placeholder_map(
     config: dict[str, Any],
     stream: dict[str, Any],
     role: str,
 ) -> dict[str, str]:
+    validate_required_config(config)
     seed = Path(config["seed"])
     checkout = Path(stream["checkout"])
     branch = stream["branch"]
     seed_tip = git_tip(seed)
     branch_tip = stream.get("tip") or git_tip(checkout, branch)
-    user = config.get("user", "")
-    dep = config.get("deploymentContext", "")
+    user = config["user"]
+    dep = config["deploymentContext"]
     ticket = stream["ticket"]
     cap = str(config.get("bounceCap", 0))
     count = str(stream.get("bounceCount", 0))
@@ -432,8 +445,60 @@ FINDING_RE_ALT = re.compile(
 )
 APPROVE_RE = re.compile(r"^APPROVE:\s*(yes|no)\s*$", re.IGNORECASE | re.MULTILINE)
 REVIEW_READY_RE = re.compile(r"REVIEW-READY", re.IGNORECASE)
-TIP_RE = re.compile(r"\b([0-9a-f]{7,40})\b", re.IGNORECASE)
+REVIEW_READY_TIP_RE = re.compile(
+    r"(?:^|\n)(?:new\s+)?tip(?:\s+SHA)?[:\s]+([0-9a-f]{7,40})\b",
+    re.IGNORECASE,
+)
 PRE_FIX_RE = re.compile(r"pre-fix tip[:\s]+([0-9a-f]{7,40})", re.IGNORECASE)
+
+
+def parse_herdr_payload(text: str) -> dict[str, Any] | None:
+    text = text.strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def herdr_error_code(result: subprocess.CompletedProcess[str]) -> str | None:
+    for chunk in (result.stdout, result.stderr):
+        payload = parse_herdr_payload(chunk or "")
+        if not payload:
+            continue
+        error = payload.get("error")
+        if isinstance(error, dict):
+            code = error.get("code")
+            if isinstance(code, str):
+                return code
+    return None
+
+
+ECHOED_APPROVE_BLOCK_RE = re.compile(
+    r"End with exactly one of:\s*\nAPPROVE:\s*yes\s*\nAPPROVE:\s*no\s*\n",
+    re.IGNORECASE,
+)
+
+
+def strip_echoed_review_prompt(text: str) -> str:
+    return ECHOED_APPROVE_BLOCK_RE.sub("", text)
+
+
+def parse_approve_verdict(text: str) -> bool | None:
+    cleaned = strip_echoed_review_prompt(text)
+    matches = list(APPROVE_RE.finditer(cleaned))
+    if not matches:
+        return None
+    return matches[-1].group(1).lower() == "yes"
+
+
+def verify_tip_in_checkout(checkout: Path, tip: str) -> str:
+    try:
+        return git_output(checkout, "rev-parse", "--verify", tip)
+    except FleetError as exc:
+        raise FleetError(f"REVIEW-READY tip {tip[:7]} not in checkout") from exc
 
 
 def parse_findings(text: str) -> list[Finding]:
@@ -453,22 +518,26 @@ def parse_findings(text: str) -> list[Finding]:
     return findings
 
 
-def parse_capture(text: str, role: str) -> CaptureResult:
+def parse_capture(text: str, role: str, checkout: Path | None = None) -> CaptureResult:
     if REVIEW_READY_RE.search(text):
-        tips = TIP_RE.findall(text)
-        if not tips:
+        idx = text.upper().find("REVIEW-READY")
+        tail = text[idx:] if idx >= 0 else text
+        tip_match = REVIEW_READY_TIP_RE.search(tail)
+        if not tip_match:
             raise FleetError("REVIEW-READY missing tip SHA")
+        tip = tip_match.group(1)
+        if checkout is not None:
+            tip = verify_tip_in_checkout(checkout, tip)
         pre_fix_match = PRE_FIX_RE.search(text)
         return CaptureResult(
             kind="review-ready",
-            tip=tips[-1],
+            tip=tip,
             pre_fix_tip=pre_fix_match.group(1) if pre_fix_match else None,
             raw_tail=text[-500:],
         )
-    approve_match = APPROVE_RE.search(text)
-    if not approve_match:
+    approve = parse_approve_verdict(text)
+    if approve is None:
         raise FleetError("no REVIEW-READY or APPROVE line")
-    approve = approve_match.group(1).lower() == "yes"
     findings = tuple(parse_findings(text))
     return CaptureResult(
         kind="verdict",
@@ -495,14 +564,16 @@ def herdr_agent_read(config: dict[str, Any], name: str, dry_run: bool = False) -
         "--lines",
         "200",
     ]
-    result = run_cmd(cmd, dry_run=dry_run, check=not dry_run)
     if dry_run:
+        run_cmd(cmd, dry_run=True)
         return ""
-    if result.returncode != 0 and "agent_not_found" in result.stderr:
+    result = run_cmd(cmd, check=False)
+    if result.returncode == 0:
+        return result.stdout
+    if herdr_error_code(result) == "agent_not_found":
         raise FleetError("agent_not_found")
-    if result.returncode != 0:
-        raise FleetError(result.stderr.strip() or "agent read failed")
-    return result.stdout
+    detail = (result.stderr or result.stdout or "agent read failed").strip()
+    raise FleetError(detail)
 
 
 def herdr_pane_read(config: dict[str, Any], pane_id: str, dry_run: bool = False) -> str:
@@ -609,7 +680,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
             print(f"# dry-run: would close tab {record.get('tabId')}")
         return 0
 
-    captured = parse_capture(text, record.get("role", ""))
+    captured = parse_capture(text, record.get("role", ""), Path(stream["checkout"]))
     record_capture(config, stream, args.agent_name, captured, config_path)
 
     if args.close:
@@ -624,6 +695,10 @@ def next_action(config: dict[str, Any], stream: dict[str, Any]) -> str:
     phase = stream.get("phase", "")
     if phase == "landed":
         return "none"
+    if phase == "approved":
+        return f"fleet land {stream['ticket']}"
+    if phase == "hold":
+        return "escalate: verdict hold"
     if phase == "verdict-pending":
         return f"fleet verdict {stream['ticket']}"
     if phase == "implementing" or phase.startswith("review-"):
@@ -654,18 +729,23 @@ def drift_warnings(config: dict[str, Any], stream: dict[str, Any], agents: list[
 
 
 def herdr_agent_list(config: dict[str, Any], dry_run: bool = False) -> list[dict[str, Any]]:
-    cmd = herdr_base(config) + ["agent", "list", "--json"]
+    cmd = herdr_base(config) + ["agent", "list"]
     if dry_run:
         run_cmd(cmd, dry_run=True)
         return []
-    result = run_cmd(cmd)
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return []
-    if isinstance(payload, list):
-        return payload
-    return payload.get("agents", payload.get("result", []))
+    result = run_cmd(cmd, check=False)
+    if result.returncode != 0:
+        raise FleetError((result.stderr or result.stdout or "agent list failed").strip())
+    payload = parse_herdr_payload(result.stdout)
+    if not payload:
+        raise FleetError("agent list returned non-JSON output")
+    result_body = payload.get("result")
+    if isinstance(result_body, dict):
+        agents = result_body.get("agents", [])
+        return agents if isinstance(agents, list) else []
+    if isinstance(result_body, list):
+        return result_body
+    return []
 
 
 def cmd_state(args: argparse.Namespace) -> int:
@@ -761,12 +841,15 @@ def cmd_verdict(args: argparse.Namespace) -> int:
 def derive_agent_name(ticket: str, role: str) -> str:
     slug = ticket.lower().replace(".", "-")
     suffix = "-impl" if role == "impl" else "-review"
+    slug = re.sub(r"[^a-z0-9_-]", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    if not slug or not slug[0].isalpha():
+        slug = f"t{slug}"
+    max_slug = 32 - len(suffix)
+    if len(slug) > max_slug:
+        slug = slug[:max_slug].rstrip("-")
     name = f"{slug}{suffix}"
-    name = re.sub(r"[^a-z0-9_-]", "-", name)
-    name = re.sub(r"-+", "-", name).strip("-")
-    if not name or not name[0].isalpha():
-        name = f"t{name}"
-    return name[:32]
+    return name
 
 
 def recipe_for_stream(config: dict[str, Any], stream: dict[str, Any], role: str) -> dict[str, Any]:
@@ -793,15 +876,19 @@ def herdr_tab_create(
         "--label",
         label,
         "--no-focus",
-        "--json",
     ]
     if dry_run:
         run_cmd(cmd, dry_run=True)
         return {"tab_id": "tab-dry", "pane_id": "pane-dry"}
-    result = run_cmd(cmd)
-    payload = json.loads(result.stdout)
-    root = payload.get("result", {}).get("root_pane", payload.get("root_pane", {}))
-    tab_id = payload.get("result", {}).get("tab_id") or payload.get("tab_id") or root.get("tab_id")
+    result = run_cmd(cmd, check=False)
+    if result.returncode != 0:
+        raise FleetError((result.stderr or result.stdout or "tab create failed").strip())
+    payload = parse_herdr_payload(result.stdout)
+    if not payload:
+        raise FleetError("tab create returned non-JSON output")
+    root = payload.get("result", {}).get("root_pane", {})
+    tab = payload.get("result", {}).get("tab", {})
+    tab_id = tab.get("tab_id") or root.get("tab_id")
     pane_id = root.get("pane_id")
     if not tab_id or not pane_id:
         raise FleetError("tab create missing tab_id or pane_id")
@@ -917,9 +1004,8 @@ def cmd_land(args: argparse.Namespace) -> int:
         raise FleetError(f"seed not on default branch {default_branch} (on {current_branch})")
 
     approved = stream.get("approvedTip")
-    tip = stream.get("tip") or git_tip(checkout, branch)
-    if not approved or approved != tip:
-        raise FleetError(f"clone tip {tip[:7]} not recorded as approved")
+    if not approved:
+        raise FleetError("no approved tip recorded")
 
     live_base = git_tip(seed)
     recorded_base = stream.get("baseTip")
@@ -935,21 +1021,30 @@ def cmd_land(args: argparse.Namespace) -> int:
     fetch_cmd = ["git", "-C", str(seed), "fetch", str(checkout), branch]
     merge_cmd = ["git", "-C", str(seed), "merge", "--ff-only", "FETCH_HEAD"]
     run_cmd(fetch_cmd, dry_run=args.dry_run)
-    if not args.dry_run:
-        run_cmd(merge_cmd)
-
     if args.dry_run:
         run_cmd(merge_cmd, dry_run=True)
+        for check_cmd in config.get("postLandChecks", []):
+            run_cmd(shlex.split(check_cmd), dry_run=True, cwd=seed)
+        return 0
+
+    fetch_head = git_output(seed, "rev-parse", "FETCH_HEAD")
+    if fetch_head != approved:
+        raise FleetError(
+            f"FETCH_HEAD {fetch_head[:7]} != approved tip {approved[:7]}; "
+            "clone moved after approval"
+        )
+    run_cmd(merge_cmd)
+    land_tip = git_tip(seed)
+    stream["phase"] = "landed"
+    stream["landedAt"] = utc_now_iso()
+    stream["landRange"] = f"{recorded_base}..{land_tip}"
+    save_config(config_path, config)
 
     for check_cmd in config.get("postLandChecks", []):
-        run_cmd(check_cmd.split(), dry_run=args.dry_run, cwd=seed)
-
-    if not args.dry_run:
-        land_tip = git_tip(seed)
-        stream["phase"] = "landed"
-        stream["landedAt"] = utc_now_iso()
-        stream["landRange"] = f"{recorded_base}..{land_tip}"
-        save_config(config_path, config)
+        try:
+            run_cmd(shlex.split(check_cmd), cwd=seed)
+        except FleetError as exc:
+            raise FleetError(f"landed but post-land check failed: {exc}") from exc
     return 0
 
 
@@ -969,38 +1064,40 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fleet")
     parser.add_argument("--config", help="Path to fleet.json (or set FLEET_CONFIG)")
     parser.add_argument("--dry-run", action="store_true", help="Print commands, change nothing")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--dry-run", action="store_true", help="Print commands, change nothing")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_prompt = sub.add_parser("prompt", help="Render a dispatch prompt")
+    p_prompt = sub.add_parser("prompt", help="Render a dispatch prompt", parents=[common])
     p_prompt.add_argument("ticket")
     p_prompt.add_argument("role", choices=["implementer", "review", "bounce"])
     p_prompt.add_argument("--out", required=True)
     p_prompt.set_defaults(func=cmd_prompt)
 
-    p_capture = sub.add_parser("capture", help="Capture agent output into stream state")
+    p_capture = sub.add_parser("capture", help="Capture agent output into stream state", parents=[common])
     p_capture.add_argument("agent_name")
     p_capture.add_argument("--close", action="store_true")
     p_capture.set_defaults(func=cmd_capture)
 
-    p_state = sub.add_parser("state", help="Show stream state and next actions")
+    p_state = sub.add_parser("state", help="Show stream state and next actions", parents=[common])
     p_state.set_defaults(func=cmd_state)
 
-    p_verdict = sub.add_parser("verdict", help="Apply verdict table to newest verdict")
+    p_verdict = sub.add_parser("verdict", help="Apply verdict table to newest verdict", parents=[common])
     p_verdict.add_argument("ticket")
     p_verdict.add_argument("--commit", action="store_true")
     p_verdict.set_defaults(func=cmd_verdict)
 
-    p_dispatch = sub.add_parser("dispatch", help="Open tab, start agent, send prompt")
+    p_dispatch = sub.add_parser("dispatch", help="Open tab, start agent, send prompt", parents=[common])
     p_dispatch.add_argument("ticket")
     p_dispatch.add_argument("role", choices=["impl", "review"])
     p_dispatch.add_argument("--prompt-file", required=True)
     p_dispatch.set_defaults(func=cmd_dispatch)
 
-    p_land = sub.add_parser("land", help="Fast-forward seed from approved clone")
+    p_land = sub.add_parser("land", help="Fast-forward seed from approved clone", parents=[common])
     p_land.add_argument("ticket")
     p_land.set_defaults(func=cmd_land)
 
-    p_gate = sub.add_parser("gate", help="Emit gate commands for stream diff")
+    p_gate = sub.add_parser("gate", help="Emit gate commands for stream diff", parents=[common])
     p_gate.add_argument("ticket")
     p_gate.set_defaults(func=cmd_gate)
 
@@ -1010,7 +1107,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if not hasattr(args, "dry_run"):
+    if not getattr(args, "dry_run", False) and argv and "--dry-run" in argv:
+        args.dry_run = True
+    elif not hasattr(args, "dry_run"):
         args.dry_run = False
     try:
         return args.func(args)
