@@ -1065,7 +1065,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="Path to fleet.json (or set FLEET_CONFIG)")
     parser.add_argument("--dry-run", action="store_true", help="Print commands, change nothing")
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--dry-run", action="store_true", help="Print commands, change nothing")
+    common.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Print commands, change nothing",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_prompt = sub.add_parser("prompt", help="Render a dispatch prompt", parents=[common])

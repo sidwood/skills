@@ -67,6 +67,27 @@ class DispatchTests(unittest.TestCase):
         config = json.loads(self.config_path.read_text())
         self.assertEqual(config["streams"][0].get("agents"), {})
 
+    @mock.patch("subprocess.run")
+    def test_dispatch_dry_run_before_subcommand(self, mock_run: mock.Mock) -> None:
+        mock_run.side_effect = make_herdr_run_handler().side_effect
+        config_before = self.config_path.read_text()
+        rc = fleet.main(
+            [
+                "--config",
+                str(self.config_path),
+                "--dry-run",
+                "dispatch",
+                "T094.1",
+                "impl",
+                "--prompt-file",
+                str(self.prompt),
+            ]
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.config_path.read_text(), config_before)
+        config = json.loads(self.config_path.read_text())
+        self.assertEqual(config["streams"][0].get("agents"), {})
+
 
 if __name__ == "__main__":
     unittest.main()

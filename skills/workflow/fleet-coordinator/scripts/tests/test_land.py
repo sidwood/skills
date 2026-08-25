@@ -115,6 +115,16 @@ class LandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("merge", result.stdout)
 
+    def test_land_dry_run_before_subcommand(self) -> None:
+        config_before = self.config_path.read_text()
+        result = run_fleet("--dry-run", "land", "T094.1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("merge", result.stdout)
+        self.assertEqual(self.config_path.read_text(), config_before)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["phase"], "approved")
+        self.assertFalse((self.seed / "work.txt").exists())
+
     def test_land_records_before_post_check_failure(self) -> None:
         config = json.loads(self.config_path.read_text())
         config["postLandChecks"] = ['sh -c "exit 1"']
