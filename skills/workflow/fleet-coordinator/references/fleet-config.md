@@ -20,10 +20,10 @@ this file.
   // t094-1-review (Herdr names: [a-z][a-z0-9_-]{0,31}, no dots). Ticket-
   // scoped names also make transcripts self-describing.
   "recipes": {
+    "composer-2.5": { "kind": "cursor", "args": ["--model", "composer-2.5", "-f"] },
     "grok-xhigh":   { "kind": "grok",   "args": ["--model", "grok-4.6", "--reasoning-effort", "xhigh", "--always-approve"] },
-    "sol-max":      { "kind": "codex",  "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=max"] },
     "opus-max":     { "kind": "claude", "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "max"] },
-    "composer-2.5": { "kind": "cursor", "args": ["--model", "composer-2.5", "-f"] }
+    "sol-max":      { "kind": "codex",  "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=max"] }
   },
 
   "implementerLadder": ["composer-2.5", "grok-high", "grok-xhigh"],
