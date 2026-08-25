@@ -32,12 +32,29 @@
     "id": "cli:tab:create",
     "result": {
       "root_pane": {
+        "agent_status": "unknown",
+        "cwd": "/private/tmp",
+        "focused": false,
+        "foreground_cwd": "/private/tmp",
         "pane_id": "w1:p99",
-        "tab_id": "w1:t99"
+        "revision": 0,
+        "scroll": {
+          "max_offset_from_bottom": 0,
+          "offset_from_bottom": 0,
+          "viewport_rows": 45
+        },
+        "tab_id": "w1:t99",
+        "terminal_id": "term_probe_fixture",
+        "workspace_id": "w1"
       },
       "tab": {
+        "agent_status": "unknown",
+        "focused": false,
+        "label": "probe",
+        "number": 141,
+        "pane_count": 1,
         "tab_id": "w1:t99",
-        "label": "T094.1 impl"
+        "workspace_id": "w1"
       },
       "type": "tab_created"
     }

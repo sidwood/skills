@@ -13,7 +13,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 import fleet  # noqa: E402
 
-from herdr_fixtures import make_herdr_run_handler  # noqa: E402
+from herdr_fixtures import ENVELOPES, completed, herdr_json, make_herdr_run_handler  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -87,6 +87,17 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(self.config_path.read_text(), config_before)
         config = json.loads(self.config_path.read_text())
         self.assertEqual(config["streams"][0].get("agents"), {})
+
+    @mock.patch("subprocess.run")
+    def test_herdr_tab_create_parses_envelope(self, mock_run: mock.Mock) -> None:
+        mock_run.return_value = completed(
+            ["herdr", "tab", "create"],
+            stdout=herdr_json(ENVELOPES["tab_create"]),
+        )
+        with open(FIXTURES / "fleet.json") as fh:
+            config = json.load(fh)
+        ids = fleet.herdr_tab_create(config, "/tmp", "probe", dry_run=False)
+        self.assertEqual(ids, {"tab_id": "w1:t99", "pane_id": "w1:p99"})
 
 
 if __name__ == "__main__":
