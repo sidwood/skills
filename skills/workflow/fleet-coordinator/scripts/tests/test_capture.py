@@ -97,7 +97,7 @@ class ParseCaptureTests(unittest.TestCase):
     def test_review_ready_rejects_unlabeled_hex(self) -> None:
         sha = "abc1234567890"
         text = f"Done.\nREVIEW-READY\ncommit {sha} landed\n"
-        with self.assertRaises(fleet.FleetError):
+        with self.assertRaisesRegex(fleet.FleetError, "missing tip SHA"):
             fleet.parse_capture(text, "impl", Path("/tmp/unused"))
 
 
