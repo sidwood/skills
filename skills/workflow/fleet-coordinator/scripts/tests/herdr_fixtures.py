@@ -61,7 +61,7 @@ def make_herdr_run_handler(
             return completed(
                 cmd,
                 returncode=1,
-                stdout=herdr_json(ENVELOPES["agent_not_found"]),
+                stderr=herdr_json(ENVELOPES["agent_not_found"]),
             )
         if match_herdr(cmd, "pane", "read"):
             pane_id = cmd[3] if len(cmd) > 3 else ""
