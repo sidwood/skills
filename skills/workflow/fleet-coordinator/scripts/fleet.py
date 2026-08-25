@@ -446,10 +446,26 @@ FINDING_RE_ALT = re.compile(
 APPROVE_RE = re.compile(r"^APPROVE:\s*(yes|no)\s*$", re.IGNORECASE | re.MULTILINE)
 REVIEW_READY_RE = re.compile(r"REVIEW-READY", re.IGNORECASE)
 REVIEW_READY_TIP_RE = re.compile(
-    r"(?:^|[\n\r])(?:REVIEW-READY\s+)?(?:[^\n]*?(?:new\s+)?tip(?:\s+SHA)?(?:\s+is)?\s*:?\s*(?:\*\*)?\s*([0-9a-f]{7,40})\b)",
+    r"(?:^|[\n\r])(?:REVIEW-READY\s+)?(?:[-*]\s+)?"
+    r"(?:(?:\*\*)?(?:new\s+)?tip(?:\s+SHA)?(?:\*\*)?(?:\s+is)?\s*:?\s*(?:\*\*)?\s*([0-9a-f]{7,40})\b"
+    r"|The\s+new\s+tip\s+SHA\s+is\s+([0-9a-f]{7,40})\b)",
     re.IGNORECASE,
 )
 PRE_FIX_RE = re.compile(r"pre-fix tip[:\s]+([0-9a-f]{7,40})", re.IGNORECASE)
+LABEL_TIP_LINE_RE = re.compile(
+    r"(?:pre-fix|base|seed)\s+tip\s*:?\s*[0-9a-f]{7,40}",
+    re.IGNORECASE,
+)
+
+
+def strip_label_tip_lines(text: str) -> str:
+    return "\n".join(
+        line for line in text.splitlines() if not LABEL_TIP_LINE_RE.search(line)
+    )
+
+
+def review_ready_tip_sha(match: re.Match[str]) -> str:
+    return match.group(1) or match.group(2)
 
 
 def parse_herdr_payload(text: str) -> dict[str, Any] | None:
@@ -522,17 +538,20 @@ def parse_capture(text: str, role: str, checkout: Path | None = None) -> Capture
     if REVIEW_READY_RE.search(text):
         idx = text.upper().find("REVIEW-READY")
         tail = text[idx:] if idx >= 0 else text
-        tip_match = REVIEW_READY_TIP_RE.search(tail)
+        pre_fix_match = PRE_FIX_RE.search(text)
+        pre_fix_tip = pre_fix_match.group(1) if pre_fix_match else None
+        tip_match = REVIEW_READY_TIP_RE.search(strip_label_tip_lines(tail))
         if not tip_match:
             raise FleetError("REVIEW-READY missing tip SHA")
-        tip = tip_match.group(1)
+        tip = review_ready_tip_sha(tip_match)
+        if pre_fix_tip and tip == pre_fix_tip:
+            raise FleetError("REVIEW-READY missing tip SHA")
         if checkout is not None:
             tip = verify_tip_in_checkout(checkout, tip)
-        pre_fix_match = PRE_FIX_RE.search(text)
         return CaptureResult(
             kind="review-ready",
             tip=tip,
-            pre_fix_tip=pre_fix_match.group(1) if pre_fix_match else None,
+            pre_fix_tip=pre_fix_tip,
             raw_tail=text[-500:],
         )
     approve = parse_approve_verdict(text)

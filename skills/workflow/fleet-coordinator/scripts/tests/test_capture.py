@@ -59,6 +59,41 @@ class ParseCaptureTests(unittest.TestCase):
                 self.assertEqual(captured.kind, "review-ready")
                 self.assertEqual(captured.tip, sha)
 
+    def test_review_ready_tip_ignores_pre_fix_label(self) -> None:
+        pre = "aaaaaaa"
+        new = "bbbbbbb"
+        checkout = Path("/tmp/unused")
+        cases = [
+            (
+                "pre-fix then new tip",
+                f"Done.\nREVIEW-READY\npre-fix tip: {pre}\nnew tip: {new}\n",
+            ),
+            (
+                "new tip then pre-fix",
+                f"Done.\nREVIEW-READY\nnew tip: {new}\npre-fix tip: {pre}\n",
+            ),
+            (
+                "bullet pre-fix then bullet new tip",
+                f"Done.\nREVIEW-READY\n- pre-fix tip: {pre}\n- new tip: {new}\n",
+            ),
+            (
+                "bullet new tip then bullet pre-fix",
+                f"Done.\nREVIEW-READY\n- new tip: {new}\n- pre-fix tip: {pre}\n",
+            ),
+        ]
+        for label, text in cases:
+            with self.subTest(label=label):
+                with mock.patch.object(fleet, "verify_tip_in_checkout", return_value=new):
+                    captured = fleet.parse_capture(text, "impl", checkout)
+                self.assertEqual(captured.kind, "review-ready")
+                self.assertEqual(captured.tip, new)
+                self.assertEqual(captured.pre_fix_tip, pre)
+
+    def test_review_ready_rejects_prose_without_sha(self) -> None:
+        text = "Done.\nREVIEW-READY\nThe reviewer effaced tip defaced concerns\n"
+        with self.assertRaisesRegex(fleet.FleetError, "missing tip SHA"):
+            fleet.parse_capture(text, "impl", Path("/tmp/unused"))
+
     def test_review_ready_rejects_unlabeled_hex(self) -> None:
         sha = "abc1234567890"
         text = f"Done.\nREVIEW-READY\ncommit {sha} landed\n"
