@@ -10,7 +10,9 @@ this file.
 ```jsonc
 {
   "seed": "/abs/path/to/seed-repo",
+  "seedDefaultBranch": "main",
   "session": "herdr-session-name",
+  "user": "name pasted into prompts with deployment context",
   "deploymentContext": "Target environment, who uses it, what P0-P2 means here. Pasted into every prompt.",
 
   // Recipes are keyed by MODEL TIER, one entry per backend+effort — never
@@ -30,27 +32,56 @@ this file.
   "pairings": "Which reviewer tiers may review which implementer tiers (no family reviews its own work).",
 
   "gate": {
-    "bootstrap": "commands that stand up test infrastructure (ephemeral database, browser install)",
-    "suites": "the commands CI runs, and which apply per diff reach"
+    "bootstrap": ["commands that stand up test infrastructure"],
+    "suites": [
+      { "prefix": "apps/api/", "commands": ["npm test --workspace=api"] },
+      { "prefix": "", "commands": ["npm test"] }
+    ]
   },
 
+  "postLandChecks": ["commands run on the seed after a successful fast-forward merge"],
   "landPolicy": "verdict table parameters",
   "bounceCap": 2,
+  "deferredTag": "(B)",
 
   "streams": [
     {
       "ticket": "T094.1",
-      "branch": "…",
+      "title": "card title for prompts",
+      "branch": "fleet/t094-1",
       "checkout": "/abs/path/to/clone",
       "implRecipe": "grok-xhigh",
       "reviewRecipe": "opus-max",
-      "phase": "implementing | review-N | bounce-N | landed | hold",
+      "phase": "implementing | review-N | bounce-N | verdict-pending | approved | landed | hold",
       "bounceCount": 0,
       "baseTip": "seed tip the branch is based on",
       "tip": "current branch tip",
-      "reviewRange": "…",
+      "preFixTip": "branch tip before bounce fix commits (re-review range base)",
+      "reviewRange": "git range string for the active review",
+      "problem": "problem statement from the ticket card",
+      "acceptanceCriteria": ["done criterion as checklist items"],
+      "scopeOut": [{ "tag": "(B)", "target": "T100", "description": "deferred area" }],
+      "inScopeSummary": "short scope line for reviewer prompts",
+      "doNotHunt": ["explicit out-of-scope hunt list for reviewers"],
+      "skippedSuites": [{ "suite": "e2e", "claim": "implementer claim for skipped gate suite" }],
+      "deferredTag": "optional per-stream override of top-level deferredTag",
+      "rulings": [{ "id": "slug", "text": "verbatim user ruling, pasted into every later prompt" }],
+      "deferrals": [{ "sev": "P3", "tag": "(B)", "loc": "file:line", "title": "deferred finding" }],
       "verdicts": [{ "pass": 1, "tip": "…", "approve": false, "findings": [{ "sev": "P2", "tag": "(A)", "loc": "file:line", "title": "…" }] }],
-      "rulings": [{ "id": "slug", "text": "verbatim user ruling, pasted into every later prompt" }]
+      "approvedTip": "clone tip approved for landing",
+      "landedAt": "ISO-8601 timestamp when landed",
+      "landRange": "baseTip..landTip recorded at land",
+      "agents": {
+        "impl": {
+          "name": "t094-1-impl",
+          "role": "impl",
+          "tabId": "herdr tab id",
+          "paneId": "herdr pane id",
+          "promptFile": "/path/to/prompt.txt",
+          "dispatchedAt": "ISO-8601"
+        }
+      },
+      "events": [{ "at": "ISO-8601", "agent": "t094-1-impl", "kind": "review-ready", "tip": "…" }]
     }
   ]
 }

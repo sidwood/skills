@@ -83,3 +83,20 @@ one unforgivable failure.
 
 For Herdr commands, dialogs that swallow prompts, and recovery when an agent
 deregisters, read [references/herdr-cli.md](references/herdr-cli.md).
+
+## Scripts
+
+Executable helpers live in `scripts/fleet.py`. Config path via `--config` or
+`FLEET_CONFIG`. Every mutating subcommand accepts `--dry-run`.
+
+| Workflow step | Command |
+|---------------|---------|
+| Render implementer / review / bounce prompt | `fleet prompt <ticket> <implementer\|review\|bounce> --out <file>` |
+| Capture agent output (before tab close) | `fleet capture <agent-name> [--close]` |
+| Board snapshot and next action | `fleet state` |
+| Apply verdict table to newest capture | `fleet verdict <ticket> [--commit]` |
+| Open tab, start agent, send prompt | `fleet dispatch <ticket> <impl\|review> --prompt-file <file>` |
+| Fast-forward seed from approved clone | `fleet land <ticket>` |
+| Gate commands for current diff | `fleet gate <ticket>` |
+
+Run unit tests: `python3 -m unittest discover -s scripts/tests`.
