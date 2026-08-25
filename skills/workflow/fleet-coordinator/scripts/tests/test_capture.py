@@ -14,7 +14,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 import fleet  # noqa: E402
 
-from herdr_fixtures import ENVELOPES, herdr_json, make_herdr_run_handler  # noqa: E402
+from herdr_fixtures import ENVELOPES, herdr_json, make_herdr_run_handler, match_herdr  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -183,7 +183,7 @@ class CaptureTests(unittest.TestCase):
         ).side_effect
         with self.assertRaises(fleet.FleetError):
             fleet.cmd_capture(self.args("t094-1-review", "--close"))
-        close_calls = [c for c in mock_run.call_args_list if c.args[0][:3] == ["herdr", "tab", "close"]]
+        close_calls = [c for c in mock_run.call_args_list if match_herdr(c.args[0], "tab", "close")]
         self.assertEqual(close_calls, [])
 
     @mock.patch("subprocess.run")
@@ -194,7 +194,7 @@ class CaptureTests(unittest.TestCase):
         ).side_effect
         rc = fleet.cmd_capture(self.args("t094-1-review"))
         self.assertEqual(rc, 0)
-        pane_calls = [c for c in mock_run.call_args_list if c.args[0][:3] == ["herdr", "pane", "read"]]
+        pane_calls = [c for c in mock_run.call_args_list if match_herdr(c.args[0], "pane", "read")]
         self.assertEqual(len(pane_calls), 1)
 
 

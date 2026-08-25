@@ -52,7 +52,7 @@ def make_herdr_run_handler(
         if not cmd or cmd[0] != "herdr":
             return completed(cmd, returncode=1, stderr="unexpected command")
         if match_herdr(cmd, "agent", "read"):
-            name = cmd[3] if len(cmd) > 3 else ""
+            name = cmd[cmd.index("read") + 1] if "read" in cmd else ""
             if name in agent_read:
                 body = agent_read[name]
                 if body.startswith("{"):
@@ -64,7 +64,7 @@ def make_herdr_run_handler(
                 stderr=herdr_json(ENVELOPES["agent_not_found"]),
             )
         if match_herdr(cmd, "pane", "read"):
-            pane_id = cmd[3] if len(cmd) > 3 else ""
+            pane_id = cmd[cmd.index("read") + 1] if "read" in cmd else ""
             text = pane_read.get(pane_id, "")
             if text:
                 return completed(cmd, stdout=text)

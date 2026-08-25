@@ -63,7 +63,7 @@ class DispatchTests(unittest.TestCase):
             rc = fleet.cmd_dispatch(args)
         self.assertEqual(rc, 0)
         printed = "\n".join(str(c) for c in mock_print.call_args_list)
-        self.assertIn("herdr tab create", printed)
+        self.assertIn("tab create", printed)
         config = json.loads(self.config_path.read_text())
         self.assertEqual(config["streams"][0].get("agents"), {})
 
