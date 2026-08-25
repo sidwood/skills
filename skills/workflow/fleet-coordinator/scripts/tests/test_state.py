@@ -15,6 +15,8 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 import fleet  # noqa: E402
 
+from herdr_fixtures import ENVELOPES, herdr_json, make_herdr_run_handler  # noqa: E402
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -39,23 +41,39 @@ class StateTests(unittest.TestCase):
     def args(self) -> fleet.argparse.Namespace:
         return fleet.build_parser().parse_args(["--config", str(self.config_path), "state"])
 
-    @mock.patch.object(fleet, "herdr_agent_list", return_value=[])
-    @mock.patch.object(fleet, "git_tip")
-    def test_state_next_actions(self, mock_tip: mock.Mock, _mock_agents: mock.Mock) -> None:
-        mock_tip.return_value = "abc1234"
+    @mock.patch("subprocess.run")
+    def test_state_next_actions_verdict_pending(self, mock_run: mock.Mock) -> None:
+        mock_run.side_effect = make_herdr_run_handler().side_effect
         config = json.loads(self.config_path.read_text())
         config["streams"][0]["phase"] = "verdict-pending"
-        config["streams"][0]["baseTip"] = "abc1234"
+        config["streams"][0]["baseTip"] = subprocess.run(
+            ["git", "-C", str(self.seed), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
         self.config_path.write_text(json.dumps(config, indent=2) + "\n")
         with mock.patch("sys.stdout", new_callable=StringIO) as out:
             rc = fleet.cmd_state(self.args())
         self.assertEqual(rc, 0)
         self.assertIn("next=fleet verdict T094.1", out.getvalue())
 
-    @mock.patch.object(fleet, "herdr_agent_list", return_value=[])
-    @mock.patch.object(fleet, "git_tip")
-    def test_state_drift_warning(self, mock_tip: mock.Mock, _mock_agents: mock.Mock) -> None:
-        mock_tip.return_value = "live0001"
+    @mock.patch("subprocess.run")
+    def test_state_next_action_approved(self, mock_run: mock.Mock) -> None:
+        mock_run.side_effect = make_herdr_run_handler().side_effect
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0]["phase"] = "approved"
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        with mock.patch("sys.stdout", new_callable=StringIO) as out:
+            rc = fleet.cmd_state(self.args())
+        self.assertEqual(rc, 0)
+        self.assertIn("next=fleet land T094.1", out.getvalue())
+
+    @mock.patch("subprocess.run")
+    def test_state_drift_warning(self, mock_run: mock.Mock) -> None:
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_list=herdr_json(ENVELOPES["agent_list"]),
+        ).side_effect
         config = json.loads(self.config_path.read_text())
         config["streams"][0]["baseTip"] = "0" * 40
         config["streams"][0]["agents"] = {
@@ -67,6 +85,19 @@ class StateTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("baseTip", err.getvalue())
         self.assertIn("missing-agent", err.getvalue())
+
+    def test_herdr_agent_list_parses_envelope(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                ["herdr", "agent", "list"],
+                0,
+                herdr_json(ENVELOPES["agent_list"]),
+                "",
+            )
+            agents = fleet.herdr_agent_list(config)
+        self.assertEqual(len(agents), 2)
+        self.assertEqual(agents[0]["name"], "t094-1-impl")
 
 
 if __name__ == "__main__":

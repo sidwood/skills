@@ -13,6 +13,8 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 import fleet  # noqa: E402
 
+from herdr_fixtures import make_herdr_run_handler  # noqa: E402
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -32,37 +34,38 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(fleet.derive_agent_name("T094.1", "review"), "t094-1-review")
         self.assertRegex(fleet.derive_agent_name("T094.1", "impl"), r"^[a-z][a-z0-9_-]{0,31}$")
 
-    @mock.patch.object(fleet, "save_config")
-    @mock.patch.object(fleet, "herdr_agent_prompt")
-    @mock.patch.object(fleet, "herdr_agent_start")
-    @mock.patch.object(fleet, "herdr_tab_create")
-    def test_dispatch_dry_run(
-        self,
-        mock_tab: mock.Mock,
-        mock_start: mock.Mock,
-        mock_prompt: mock.Mock,
-        _mock_save: mock.Mock,
-    ) -> None:
-        mock_tab.return_value = {"tab_id": "tab-1", "pane_id": "pane-1"}
+    def test_derive_agent_name_keeps_suffix_on_long_ticket(self) -> None:
+        long_ticket = "T" + "0" * 40 + ".1"
+        impl = fleet.derive_agent_name(long_ticket, "impl")
+        review = fleet.derive_agent_name(long_ticket, "review")
+        self.assertTrue(impl.endswith("-impl"))
+        self.assertTrue(review.endswith("-review"))
+        self.assertLessEqual(len(impl), 32)
+        self.assertLessEqual(len(review), 32)
+        self.assertNotEqual(impl, review)
+
+    @mock.patch("subprocess.run")
+    def test_dispatch_dry_run(self, mock_run: mock.Mock) -> None:
+        mock_run.side_effect = make_herdr_run_handler().side_effect
         args = fleet.build_parser().parse_args(
             [
                 "--config",
                 str(self.config_path),
-                "--dry-run",
                 "dispatch",
                 "T094.1",
                 "impl",
                 "--prompt-file",
                 str(self.prompt),
+                "--dry-run",
             ]
         )
-        with mock.patch("builtins.print"):
+        with mock.patch("builtins.print") as mock_print:
             rc = fleet.cmd_dispatch(args)
         self.assertEqual(rc, 0)
-        mock_tab.assert_called_once()
-        mock_start.assert_called_once()
-        mock_prompt.assert_called_once()
-        self.assertEqual(mock_tab.call_args.kwargs.get("dry_run"), True)
+        printed = "\n".join(str(c) for c in mock_print.call_args_list)
+        self.assertIn("herdr tab create", printed)
+        config = json.loads(self.config_path.read_text())
+        self.assertEqual(config["streams"][0].get("agents"), {})
 
 
 if __name__ == "__main__":
