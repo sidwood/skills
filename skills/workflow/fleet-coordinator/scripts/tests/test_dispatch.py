@@ -152,3 +152,70 @@ class DispatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptReceiptTests(unittest.TestCase):
+    def setUp(self) -> None:
+        with open(FIXTURES / "fleet.json") as fh:
+            self.config = json.load(fh)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.prompt = Path(self.tmp.name) / "prompt.txt"
+        self.prompt.write_text(
+            "T094.1 REVIEW - judge the diff against the wiki notes in scope.\n"
+        )
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_prompt_echoed_first_try(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        echo = "> T094.1 REVIEW - judge the diff\n  against the wiki notes in scope."
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-review": echo}
+        ).side_effect
+        fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+        prompts = [
+            c for c in mock_run.call_args_list if "prompt" in c.args[0]
+        ]
+        self.assertEqual(len(prompts), 1)
+        mock_sleep.assert_not_called()
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_swallowed_prompt_is_resent_once(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        blank = "> _ codex started\n\nAsk Codex to do anything"
+        echo = "> T094.1 REVIEW - judge the diff against the wiki notes in scope."
+        reads = iter([blank] * fleet.PROMPT_RECEIPT_ATTEMPTS + [echo])
+        handler = make_herdr_run_handler().side_effect
+
+        def side_effect(cmd, **kwargs):
+            if "herdr" in cmd[:1] and "read" in cmd:
+                return completed(cmd, stdout=next(reads))
+            return handler(cmd, **kwargs)
+
+        mock_run.side_effect = side_effect
+        fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+        prompts = [
+            c for c in mock_run.call_args_list if "prompt" in c.args[0]
+        ]
+        self.assertEqual(len(prompts), 2)
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_never_echoed_raises(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        blank = "> _ codex started\n\nAsk Codex to do anything"
+        handler = make_herdr_run_handler().side_effect
+
+        def side_effect(cmd, **kwargs):
+            if "herdr" in cmd[:1] and "read" in cmd:
+                return completed(cmd, stdout=blank)
+            return handler(cmd, **kwargs)
+
+        mock_run.side_effect = side_effect
+        with self.assertRaises(fleet.FleetError):
+            fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)

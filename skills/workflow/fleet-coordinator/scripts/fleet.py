@@ -917,6 +917,44 @@ def herdr_tab_create(
 
 AGENT_START_ATTEMPTS = 3
 AGENT_START_RETRY_SECONDS = 3.0
+PROMPT_RECEIPT_ATTEMPTS = 4
+PROMPT_RECEIPT_RETRY_SECONDS = 5.0
+# Long enough to be distinctive, short enough to sit inside the first rendered
+# transcript line, ahead of any pane wrapping or agent chrome.
+PROMPT_SIGNATURE_LENGTH = 32
+
+
+def prompt_signature(text: str, length: int = PROMPT_SIGNATURE_LENGTH) -> str:
+    return " ".join(text.split())[:length]
+
+
+def confirm_prompt_receipt(
+    config: dict[str, Any],
+    name: str,
+    text: str,
+    attempts: int = PROMPT_RECEIPT_ATTEMPTS,
+    delay: float = PROMPT_RECEIPT_RETRY_SECONDS,
+) -> bool:
+    """A submitted prompt is received only when the agent transcript echoes it.
+
+    herdr's --wait --until working can match transient startup activity, and a
+    CLI agent fresh from start may swallow the first submission entirely (the
+    fix-1-review incident): state alone is not receipt. The echoed prompt head
+    in the transcript is.
+    """
+    signature = prompt_signature(text)
+    if not signature:
+        return True
+    for attempt in range(1, attempts + 1):
+        try:
+            transcript = herdr_agent_read(config, name)
+        except FleetError:
+            transcript = ""
+        if signature in " ".join(transcript.split()):
+            return True
+        if attempt < attempts:
+            time.sleep(delay)
+    return False
 
 
 def herdr_agent_start(
@@ -992,6 +1030,17 @@ def herdr_agent_prompt(
             keys_cmd = herdr_base(config) + ["agent", "send-keys", name, "a"]
             run_cmd(keys_cmd)
         run_cmd(cmd)
+    if confirm_prompt_receipt(config, name, text):
+        return
+    # One re-send covers the swallowed-at-startup case; anything beyond that
+    # is a seat problem the coordinator must see, not paper over.
+    run_cmd(cmd)
+    if confirm_prompt_receipt(config, name, text):
+        return
+    raise FleetError(
+        f"prompt not received by {name}: transcript never echoed "
+        f"{prompt_signature(text)!r} after a re-send; read the pane"
+    )
 
 
 def cmd_dispatch(args: argparse.Namespace) -> int:
