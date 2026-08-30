@@ -188,7 +188,7 @@ class PromptReceiptTests(unittest.TestCase):
     ) -> None:
         blank = "> _ codex started\n\nAsk Codex to do anything"
         echo = "> T094.1 REVIEW - judge the diff against the wiki notes in scope."
-        reads = iter([blank] * fleet.PROMPT_RECEIPT_ATTEMPTS + [echo])
+        reads = iter([blank] * (fleet.PROMPT_RECEIPT_ATTEMPTS + 1) + [echo, echo])
         handler = make_herdr_run_handler().side_effect
 
         def side_effect(cmd, **kwargs):
@@ -219,3 +219,33 @@ class PromptReceiptTests(unittest.TestCase):
         mock_run.side_effect = side_effect
         with self.assertRaises(fleet.FleetError):
             fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+
+
+class LoginMarkerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        with open(FIXTURES / "fleet.json") as fh:
+            self.config = json.load(fh)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.prompt = Path(self.tmp.name) / "prompt.txt"
+        self.prompt.write_text("T094.1 REVIEW - judge the diff.\n")
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_login_demand_raises_without_resend(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        pane = "> T094.1 REVIEW - judge the diff.\n  Login expired · Please run /login"
+        handler = make_herdr_run_handler().side_effect
+
+        def side_effect(cmd, **kwargs):
+            if "herdr" in cmd[:1] and "read" in cmd:
+                return completed(cmd, stdout=pane)
+            return handler(cmd, **kwargs)
+
+        mock_run.side_effect = side_effect
+        with self.assertRaises(fleet.FleetError) as ctx:
+            fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+        self.assertIn("authentication", str(ctx.exception))
+        prompts = [c for c in mock_run.call_args_list if "prompt" in c.args[0]]
+        self.assertEqual(len(prompts), 1)

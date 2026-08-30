@@ -922,6 +922,9 @@ PROMPT_RECEIPT_RETRY_SECONDS = 5.0
 # Long enough to be distinctive, short enough to sit inside the first rendered
 # transcript line, ahead of any pane wrapping or agent chrome.
 PROMPT_SIGNATURE_LENGTH = 32
+# A pane can echo a submitted prompt and still refuse it: an unauthenticated
+# CLI answers with a login demand instead of working (the drawer-1 incident).
+LOGIN_MARKERS = ("Not logged in", "Login expired", "Please run /login")
 
 
 def prompt_signature(text: str, length: int = PROMPT_SIGNATURE_LENGTH) -> str:
@@ -950,6 +953,8 @@ def confirm_prompt_receipt(
             transcript = herdr_agent_read(config, name)
         except FleetError:
             transcript = ""
+        if any(marker in transcript for marker in LOGIN_MARKERS):
+            return False
         if signature in " ".join(transcript.split()):
             return True
         if attempt < attempts:
@@ -1016,12 +1021,15 @@ def herdr_agent_prompt(
             "--until",
             "working",
             "--timeout",
-            "20000",
+            "60000",
         ]
     )
     if dry_run:
         run_cmd(cmd, dry_run=True)
         return
+    # Submission status signals (stalled, status-wait timeouts) are advisory:
+    # a slow-booting seat can outlive them and still accept the prompt. The
+    # transcript is the arbiter, so no send here is allowed to raise.
     result = run_cmd(cmd, check=False)
     if result.returncode != 0 and "agent_prompt_stalled" in (result.stderr or ""):
         visible_cmd = herdr_base(config) + ["agent", "read", name, "--source", "visible"]
@@ -1029,18 +1037,35 @@ def herdr_agent_prompt(
         if "Workspace Trust" in (visible.stdout or ""):
             keys_cmd = herdr_base(config) + ["agent", "send-keys", name, "a"]
             run_cmd(keys_cmd)
-        run_cmd(cmd)
+        run_cmd(cmd, check=False)
     if confirm_prompt_receipt(config, name, text):
         return
+    _raise_on_login_demand(config, name)
     # One re-send covers the swallowed-at-startup case; anything beyond that
     # is a seat problem the coordinator must see, not paper over.
-    run_cmd(cmd)
+    run_cmd(cmd, check=False)
     if confirm_prompt_receipt(config, name, text):
         return
+    _raise_on_login_demand(config, name)
     raise FleetError(
         f"prompt not received by {name}: transcript never echoed "
         f"{prompt_signature(text)!r} after a re-send; read the pane"
     )
+
+
+def _raise_on_login_demand(config: dict[str, Any], name: str) -> None:
+    """An echoed prompt on an unauthenticated seat is delivery, not acceptance."""
+    try:
+        transcript = herdr_agent_read(config, name)
+    except FleetError:
+        return
+    for marker in LOGIN_MARKERS:
+        if marker in transcript:
+            raise FleetError(
+                f"seat {name} demands authentication ({marker!r}); a re-send "
+                "cannot fix this - log the seat in, restart it fresh so the "
+                "new credentials load, then dispatch again"
+            )
 
 
 def cmd_dispatch(args: argparse.Namespace) -> int:
