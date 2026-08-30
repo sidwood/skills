@@ -249,3 +249,36 @@ class LoginMarkerTests(unittest.TestCase):
         self.assertIn("authentication", str(ctx.exception))
         prompts = [c for c in mock_run.call_args_list if "prompt" in c.args[0]]
         self.assertEqual(len(prompts), 1)
+
+
+class WorkingStatusReceiptTests(unittest.TestCase):
+    def setUp(self) -> None:
+        with open(FIXTURES / "fleet.json") as fh:
+            self.config = json.load(fh)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.prompt = Path(self.tmp.name) / "prompt.txt"
+        self.prompt.write_text("AUTH-9 - encode approved fixes.\n")
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_working_agent_counts_as_receipt(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        blank = "#1 AUTH-9 ... (+15 lines) collapsed queue render"
+        handler = make_herdr_run_handler().side_effect
+
+        def side_effect(cmd, **kwargs):
+            if "herdr" in cmd[:1] and "read" in cmd:
+                return completed(cmd, stdout=blank)
+            if "herdr" in cmd[:1] and "get" in cmd:
+                return completed(
+                    cmd, stdout='{"result":{"agent":{"agent_status":"working"}}}'
+                )
+            return handler(cmd, **kwargs)
+
+        mock_run.side_effect = side_effect
+        fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+        prompts = [c for c in mock_run.call_args_list if "prompt" in c.args[0]]
+        self.assertEqual(len(prompts), 1)
+        mock_sleep.assert_not_called()

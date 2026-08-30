@@ -931,6 +931,16 @@ def prompt_signature(text: str, length: int = PROMPT_SIGNATURE_LENGTH) -> str:
     return " ".join(text.split())[:length]
 
 
+def herdr_agent_status(config: dict[str, Any], name: str) -> str:
+    cmd = herdr_base(config) + ["agent", "get", name]
+    result = run_cmd(cmd, check=False)
+    try:
+        payload = json.loads(result.stdout or "{}")
+        return payload.get("result", {}).get("agent", {}).get("agent_status", "")
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+
+
 def confirm_prompt_receipt(
     config: dict[str, Any],
     name: str,
@@ -938,12 +948,17 @@ def confirm_prompt_receipt(
     attempts: int = PROMPT_RECEIPT_ATTEMPTS,
     delay: float = PROMPT_RECEIPT_RETRY_SECONDS,
 ) -> bool:
-    """A submitted prompt is received only when the agent transcript echoes it.
+    """A submitted prompt is received when the transcript echoes it OR the
+    agent is measurably working on it.
 
     herdr's --wait --until working can match transient startup activity, and a
     CLI agent fresh from start may swallow the first submission entirely (the
-    fix-1-review incident): state alone is not receipt. The echoed prompt head
-    in the transcript is.
+    fix-1-review incident): the send's exit status alone is not receipt. But
+    the echo alone is also not the whole story: some CLIs render a submitted
+    prompt collapsed or late while already processing it (the auth-lane
+    incident, where a blind re-send queued a duplicate brief). An agent whose
+    status is working accepted SOMETHING; combined with the fact that we only
+    prompt freshly started or idle seats, that something is our prompt.
     """
     signature = prompt_signature(text)
     if not signature:
@@ -956,6 +971,8 @@ def confirm_prompt_receipt(
         if any(marker in transcript for marker in LOGIN_MARKERS):
             return False
         if signature in " ".join(transcript.split()):
+            return True
+        if herdr_agent_status(config, name) == "working":
             return True
         if attempt < attempts:
             time.sleep(delay)
