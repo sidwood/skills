@@ -281,4 +281,31 @@ class WorkingStatusReceiptTests(unittest.TestCase):
         fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
         prompts = [c for c in mock_run.call_args_list if "prompt" in c.args[0]]
         self.assertEqual(len(prompts), 1)
-        mock_sleep.assert_not_called()
+        mock_sleep.assert_called_once()
+
+
+    @mock.patch("fleet.time.sleep")
+    @mock.patch("subprocess.run")
+    def test_boot_flicker_working_is_not_receipt(
+        self, mock_run: mock.Mock, mock_sleep: mock.Mock
+    ) -> None:
+        blank = "codex banner, empty composer"
+        statuses = iter(["working"] + ["idle"] * 20)
+        handler = make_herdr_run_handler().side_effect
+
+        def side_effect(cmd, **kwargs):
+            if "herdr" in cmd[:1] and "read" in cmd:
+                return completed(cmd, stdout=blank)
+            if "herdr" in cmd[:1] and "get" in cmd:
+                status = next(statuses)
+                return completed(
+                    cmd,
+                    stdout='{"result":{"agent":{"agent_status":"%s"}}}' % status,
+                )
+            return handler(cmd, **kwargs)
+
+        mock_run.side_effect = side_effect
+        with self.assertRaises(fleet.FleetError):
+            fleet.herdr_agent_prompt(self.config, "t094-1-review", self.prompt)
+        prompts = [c for c in mock_run.call_args_list if "prompt" in c.args[0]]
+        self.assertEqual(len(prompts), 2)

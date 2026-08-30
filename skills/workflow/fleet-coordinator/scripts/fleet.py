@@ -963,6 +963,7 @@ def confirm_prompt_receipt(
     signature = prompt_signature(text)
     if not signature:
         return True
+    working_streak = 0
     for attempt in range(1, attempts + 1):
         try:
             transcript = herdr_agent_read(config, name)
@@ -972,8 +973,15 @@ def confirm_prompt_receipt(
             return False
         if signature in " ".join(transcript.split()):
             return True
+        # A boot flicker can report working for one poll and then swallow the
+        # prompt (the auth-2-review incident); sustained working across two
+        # spaced polls is genuine processing.
         if herdr_agent_status(config, name) == "working":
-            return True
+            working_streak += 1
+            if working_streak >= 2:
+                return True
+        else:
+            working_streak = 0
         if attempt < attempts:
             time.sleep(delay)
     return False
