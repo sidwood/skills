@@ -21,7 +21,7 @@ learns about it at the next self-eval.
 | BLOCKED | same lane blocked on two consecutive polls | an approval dialog is waiting |
 | VANISHED | lane disappeared while working or done, unswept | teardown without capture; output may be lost |
 | SEED-MOVED | seed tip changed | something landed; push cadence and queue change |
-| COORDINATOR-STALL | coordinator reports working with a frozen revision past the threshold | the loop is wedged, not busy |
+| COORDINATOR-STALL | coordinator working, transition sequence frozen past the threshold, and no spinner seen in any poll of that window | the loop is wedged, not busy |
 | inventory unreadable | inventory call failed or returned nothing | the fleet may be gone |
 
 Rules the design depends on:
@@ -33,6 +33,23 @@ Rules the design depends on:
   status (a work lock, a claim file), prefer it.
 - **Blocked is debounced by one poll.** A single blocked reading is usually a
   lane between turns.
+- **A stall needs two dead signals, and the revision field is not one of
+  them.** A revision counter that looks like progress is a trap: some agent
+  kinds sit frozen at their first value for an entire session while working
+  perfectly, so "revision unchanged" fires a false stall on them and hides a
+  real one on the seats whose counter climbs by itself. Use instead:
+  - the **transition sequence** (`state_change_seq`), which increments only on
+    a genuine state change, and
+  - the **spinner glyph** in the pane's terminal title (braille,
+    U+2800–U+28FF), which proves the pane is rendering at the sampled instant.
+
+  Declare a stall only when the lane reports working, the sequence has been
+  frozen for the whole stall window, **and** not one poll in that window saw a
+  spinner. Either signal alone is normal: a long turn legitimately freezes the
+  sequence, and the spinner blinks between samples. A window that ends with
+  sightings is a healthy long turn — log it and re-arm silently. Re-arm after a
+  wake too, so the next window is judged on its own evidence rather than
+  re-firing every poll.
 - **The swept ledger is the deduplication key.** It is append-only and
   trimmed, and a lane name in it never fires again — so dispatch fresh,
   role-and-ticket-derived lane names per cycle rather than reusing one name

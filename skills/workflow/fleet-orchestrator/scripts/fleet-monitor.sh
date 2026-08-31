@@ -57,21 +57,33 @@ prev=""
 prev_seed=""
 coord_idle_since=0
 last_pulse=0
-coord_rev_seen=""
-coord_rev_time=0
+coord_seq_seen=""
+coord_seq_time=0
+coord_spinner_seen=0
 blocked_reported=" "
 
 log() { echo "$(date '+%H:%M:%S') $*" >> "$FLEET_LOG"; }
 
-# One line per agent: name|status|revision, sorted so the string can be
-# diffed against the previous poll.
+# One line per agent: name|status|state_change_seq|spinner, sorted so the
+# string can be diffed against the previous poll.
+#
+# state_change_seq increments on every genuine state transition. The spinner
+# flag is 1 when the pane's terminal title carries a braille spinner glyph
+# (U+2800-U+28FF), which means the pane is rendering right now. Do NOT use the
+# revision field for liveness — see references/monitor-design.md.
 snapshot() {
   herdr agent list --session "$FLEET_SESSION" 2>&1 | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
-    rows = [f\"{a.get('name') or '?'}|{a['agent_status']}|{a.get('revision', 0)}\"
-            for a in data['result']['agents']]
+    rows = []
+    for agent in data['result']['agents']:
+        name = agent.get('name') or '?'
+        status = agent['agent_status']
+        seq = agent.get('state_change_seq', 0)
+        title = agent.get('terminal_title') or ''
+        spinner = 1 if any('\u2800' <= ch <= '\u28ff' for ch in title) else 0
+        rows.append(f'{name}|{status}|{seq}|{spinner}')
     print(';'.join(sorted(rows)) or 'EMPTY')
 except Exception as exc:
     print(f'PARSE-ERROR:{exc}')"
@@ -122,8 +134,8 @@ def parse(text):
     table = {}
     for row in text.split(';'):
         parts = row.split('|')
-        if len(parts) == 3:
-            table[parts[0]] = (parts[1], int(parts[2]))
+        if len(parts) == 4:
+            table[parts[0]] = (parts[1], int(parts[2]), int(parts[3]))
     return table
 
 
@@ -131,7 +143,7 @@ old, new = parse(sys.argv[1]), parse(sys.argv[2])
 swept = open(os.environ['FLEET_SWEPT']).read().split()
 coordinator = os.environ['FLEET_COORDINATOR']
 
-for lane, (state, _rev) in new.items():
+for lane, (state, _seq, _spinner) in new.items():
     was = old.get(lane)
     if lane == coordinator or lane in swept:
         continue
@@ -144,32 +156,52 @@ for lane, (state, _rev) in new.items():
     if not was:
         print(f'INFO:new lane {lane} ({state})')
 
-for lane, (state, _rev) in old.items():
+for lane, (state, _seq, _spinner) in old.items():
     if lane not in new and state in ('working', 'done') and lane not in swept:
         print(f'VANISHED:{lane} vanished (was {state}) - uncaptured teardown?')
 PYTHON
 }
 
-# The coordinator is a lane too: a frozen revision while it reports working is
-# a stall, and idleness with unprocessed settles is a dropped event.
+# The coordinator is a lane too: a wedged loop is a stall, and idleness with
+# unprocessed settles is a dropped event.
+#
+# A stall needs BOTH liveness signals to be dead across the whole window:
+# state_change_seq frozen AND no spinner sighting in any poll of that window.
+# Either alone is normal — a long turn freezes the sequence, and the spinner
+# blinks between samples — so requiring one signal alone raises false alarms.
 coordinator_oversight() {
-  local cur="$1" state rev now pending
+  local cur="$1" state seq spinner now pending frozen_for
   state="$(echo "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $2 }')"
-  rev="$(echo "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $3 }')"
+  seq="$(echo "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $3 }')"
+  spinner="$(echo "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $4 }')"
   now="$(date +%s)"
   [ -n "$state" ] || return 0
 
   if [ "$state" = working ]; then
     coord_idle_since=0
-    if [ "$coord_rev_seen" = "$rev" ]; then
-      if [ $((now - coord_rev_time)) -ge "$FLEET_STALL_SECONDS" ]; then
-        echo "WAKE: COORDINATOR-STALL working with frozen revision $rev"
-        coord_rev_time="$now"
-      fi
-    else
-      coord_rev_seen="$rev"
-      coord_rev_time="$now"
+
+    if [ "$coord_seq_seen" != "$seq" ]; then
+      # A genuine transition: the loop is moving, so open a fresh window.
+      coord_seq_seen="$seq"
+      coord_seq_time="$now"
+      coord_spinner_seen=0
+      return 0
     fi
+
+    # Sample the spinner every poll; one sighting proves the pane is rendering.
+    [ "$spinner" = 1 ] && coord_spinner_seen=$((coord_spinner_seen + 1))
+
+    frozen_for=$((now - coord_seq_time))
+    [ "$frozen_for" -ge "$FLEET_STALL_SECONDS" ] || return 0
+
+    if [ "$coord_spinner_seen" = 0 ]; then
+      echo "WAKE: COORDINATOR-STALL working ${frozen_for}s with state_change_seq frozen at $seq and no spinner seen"
+    else
+      log "coordinator long turn: seq $seq frozen ${frozen_for}s but $coord_spinner_seen spinner sightings - healthy"
+    fi
+    # Re-arm either way, so the next window is judged on its own evidence.
+    coord_seq_time="$now"
+    coord_spinner_seen=0
     return 0
   fi
 

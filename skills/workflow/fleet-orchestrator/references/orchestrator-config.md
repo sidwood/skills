@@ -36,7 +36,7 @@ started, because its heartbeat implies coverage it does not have.
 | `FLEET_CI_RETRIGGER_WORKFLOW` | unset | workflow to trigger once when a push produces no run at all |
 | `FLEET_CI_RETRIGGER_REF` | `HEAD` | ref for that trigger |
 | `FLEET_POLL_SECONDS` | `60` | settle-monitor poll interval |
-| `FLEET_STALL_SECONDS` | `2700` | working-with-frozen-revision threshold for a coordinator stall |
+| `FLEET_STALL_SECONDS` | `2700` | window the coordinator's transition sequence must stay frozen, with no spinner seen, before a stall is declared |
 | `FLEET_IDLE_SECONDS` | `300` | coordinator idleness before an idle pulse |
 | `FLEET_PULSE_INTERVAL_SECONDS` | `600` | minimum gap between idle pulses |
 | `FLEET_CI_POLLS`, `FLEET_CI_POLL_SECONDS` | `40`, `90` | CI watcher budget (default ≈ 60 minutes) |
