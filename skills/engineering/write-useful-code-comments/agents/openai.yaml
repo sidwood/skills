@@ -1,0 +1,7 @@
+interface:
+  display_name: "Write Useful Code Comments"
+  short_description: "Write concise, non-redundant code comments"
+  default_prompt: "Use $write-useful-code-comments to review these comments and remove redundant explanations."
+policy:
+  allow_implicit_invocation: true
+
