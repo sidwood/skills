@@ -10,6 +10,11 @@ every project binding lives in config, every judgment call escalates to the
 user. An unmatched situation stops for escalation — inventing an action is the
 one unforgivable failure.
 
+When an orchestrator supervises this loop (the `fleet-orchestrator` skill), it
+is the escalation address instead of the user: it rules on the verdicts you
+report, schedules the landing train, and owns pushes and monitors. Report
+every settle to it and land only in the slot it gives you.
+
 ## Configuration contract
 
 1. Locate the project's fleet config (`fleet.json`, or the path the project
