@@ -32,7 +32,10 @@ every settle to it and land only in the slot it gives you.
 ## Workflow
 
 1. Watch agent settles (monitor or poll). On each event, find its row below,
-   run it, and report. No matching row: stop and escalate.
+   run it, and report under
+   [references/comms-contract.md](references/comms-contract.md) — plain
+   five-year-old language, bullets, ⚠️ on every escalation and nothing else.
+   No matching row: stop and escalate.
 2. **Implementer settles** → CAPTURE (read the transcript before any
    teardown). Output contains REVIEW-READY with a tip SHA and gate table →
    record it, tear down, dispatch the assigned reviewer using the scoped
@@ -84,7 +87,10 @@ every settle to it and land only in the slot it gives you.
   read the pane; if that also fails, escalate — never close unread.
 - Fresh tab and agent per dispatch; never reuse a settled pane.
 - One writer per clone; agents never touch the seed working copy.
-- Report in short bullets; the first line is the event and the action taken.
+- Report in plain five-year-old language, in bullets; the first line is the
+  event and the action taken, precision goes in the linked files, and ⚠️ marks
+  every escalation and nothing else. The operator scans your pane for exactly
+  that marker: [references/comms-contract.md](references/comms-contract.md).
 
 For Herdr commands, dialogs that swallow prompts, and recovery when an agent
 deregisters, read [references/herdr-cli.md](references/herdr-cli.md).
