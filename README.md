@@ -12,7 +12,7 @@ skill under its unqualified name.
 | --- | --- |
 | Product | `prd-review`, `prd-to-plan`, `to-issues`, `to-prd`, `to-questionnaire`, `to-spec` |
 | Engineering | `bug-report`, `codebase-design`, `code-review`, `commit-message`, `diagnosing-bugs`, `domain-modeling`, `improve-codebase-architecture`, `migrate-to-shoehorn`, `prototype`, `resolving-rebase-conflicts`, `tdd`, `ubiquitous-language`, `write-useful-code-comments` |
-| Workflow | `compress`, `defuddle`, `grilling`, `handoff`, `herdr-fleet`, `research`, `teach`, `wait-what`, `zoom-out` |
+| Workflow | `canvas-kanban`, `compress`, `defuddle`, `fleet-coordinator`, `grilling`, `handoff`, `research`, `teach`, `wait-what`, `zoom-out` |
 | Authoring | `compress-a-skill`, `humanizer`, `to-skill`, `verify-compression`, `writing-for-agents` |
 | Creative | `rpg-scenario-beats` |
 
