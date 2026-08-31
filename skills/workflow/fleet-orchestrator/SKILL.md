@@ -34,12 +34,18 @@ Export them, or point `FLEET_ENV` at a file that sets them
 
 ## Workflow
 
-1. **Adopt or verify the fleet.** Run `date`. Run `scripts/self-eval.sh` and
+1. **Bind the communication contract**, before your first report and for every
+   turn after it: plain five-year-old language, bullets, answer first, detail
+   linked from files, and ⚠️ only when work is stopped waiting on the operator.
+   *Done when:* your first report is scannable bullets a five-year-old could
+   follow, carrying ⚠️ only if the fleet is genuinely stopped on them. Full
+   contract: [references/comms-contract.md](references/comms-contract.md).
+2. **Adopt or verify the fleet.** Run `date`. Run `scripts/self-eval.sh` and
    read the computed queue, lane inventory, and drift lines. Reconcile every
    drift line with the coordinator before dispatching anything.
    *Done when:* self-eval prints no `QUEUE-DRIFT`, no `ORPHANED`, and the lane
    list matches the config's active streams.
-2. **Arm four monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
+3. **Arm four monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
    through the harness's persistent facility, one launch, never `&`. A CI
    watcher per push. Self-eval at every wake. A cron watchdog whose prompt is
    one line pointing at
@@ -48,11 +54,11 @@ Export them, or point `FLEET_ENV` at a file that sets them
    *Done when:* the heartbeat files are fresh and exactly one watchdog cron
    exists. Design and rationale:
    [references/monitor-design.md](references/monitor-design.md).
-3. **Announce takeover to the coordinator** in one prompt: who you are, what
+4. **Announce takeover to the coordinator** in one prompt: who you are, what
    you rule on, and that it reports verdicts and lands nothing without you.
    *Done when:* the coordinator acknowledges and its phase record matches
-   step 1's reconciliation.
-4. **Run the event loop on wake-class events only.** For each wake: capture
+   step 2's reconciliation.
+5. **Run the event loop on wake-class events only.** For each wake: capture
    the lane to a suffixed file before any teardown, read the verdict from the
    agent's own output below the prompt echo, rule, sweep the ruling to the
    coordinator, and append the lane to the swept ledger. Routine settles are
@@ -60,7 +66,7 @@ Export them, or point `FLEET_ENV` at a file that sets them
    *Done when:* every wake ends with a capture on disk, a ruling sent, and a
    ledger entry. Rules:
    [references/verdict-discipline.md](references/verdict-discipline.md).
-5. **Land through one train, push on cadence.** Approved work lands
+6. **Land through one train, push on cadence.** Approved work lands
    sequentially in one lane; waiting clones stay idle; one full gate matrix
    runs at the batch tip. Push only with unpushed commits, green remote CI,
    green batch matrix, and no deploy in flight — fast-forward only, then arm
@@ -68,13 +74,13 @@ Export them, or point `FLEET_ENV` at a file that sets them
    *Done when:* the remote has the batch, a watcher is live on it, and the
    landed tips recorded are post-rebase seed SHAs. Law:
    [references/landing-and-push.md](references/landing-and-push.md).
-6. **Police the fleet at every checkpoint.** Act on each self-eval finding in
+7. **Police the fleet at every checkpoint.** Act on each self-eval finding in
    the same turn: relaunch dead watchers, pulse a stale board, name the
    bottleneck behind a velocity stall, dispatch behind stale blockers, fill
    idle seats.
    *Done when:* no alarm line from the last run is still true.
    [references/self-eval.md](references/self-eval.md).
-7. **Hand over or close the shift.** Write the handover from
+8. **Hand over or close the shift.** Write the handover from
    [references/shift-handover.md](references/shift-handover.md), have the
    successor rearm every monitor, and confirm their first checkpoint ran clean
    before you stop steering.
@@ -82,8 +88,8 @@ Export them, or point `FLEET_ENV` at a file that sets them
 
 ## Constraints
 
-- Escalate to the operator only what only they can decide; mark it as blocking
-  and stop that thread until they answer.
+- Escalate to the operator only what only they can decide; mark it ⚠️, put the
+  ask last with a recommendation, and stop that thread until they answer.
 - Delegate all implementation, review, and board upkeep. Your hands are for
   capture, rulings, landing, pushes, and monitors.
 - Capture before teardown, suffix re-reads, and read verdicts from the agent's
@@ -94,8 +100,10 @@ Export them, or point `FLEET_ENV` at a file that sets them
   CI watcher.
 - Treat an operator nudge about a settled lane or a red pipeline as a monitor
   failure: fix the monitor, then answer.
-- Report in short bullets: the event, the action taken, and what is now blocked
-  on a person.
+- Report in plain five-year-old language, in bullets: the event, the action
+  taken, and what is now blocked on a person. Precision goes in the linked
+  files. Reserve ⚠️ for work that is stopped on the operator, and expect most
+  reports to carry none.
 
 ## Scripts
 
