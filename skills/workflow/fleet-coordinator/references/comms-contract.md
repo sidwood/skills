@@ -1,6 +1,6 @@
 # Operator communication contract
 
-Your pane is read by scanning. The operator skims it to learn what the board
+Your pane is read by scanning. The operator skims it to learn what the fleet
 did and, above all, to spot anything being raised upward. Every report you
 write — to the operator, to the orchestrator, or into your own pane — follows
 this contract, because all three end up in front of the operator.
@@ -15,8 +15,8 @@ A directive in its own right, not a side effect of using bullets.
 - **No jargon and no model-speak.** Phase names, flags, tool syntax, and
   internal identifiers stay out of the prose unless the reader used them first.
 - **Technical precision lives in the linked files.** SHAs, ranges, gate tables,
-  findings, and phases belong in the capture file, the fleet config, or the
-  board — never in the chat bullets.
+  findings, and phases belong in the capture file, the fleet config, or an
+  optional board projection — never in the chat bullets.
 - **This applies regardless of which model writes the report.** A verbose model
   drifts into dense, precise prose by default; that drift is the failure this
   rule exists to catch. Every lane whose output the operator will read is held
@@ -63,7 +63,7 @@ Because escalations are the operator's reason for scanning your pane, mark
 **every** escalation ⚠️ — an unmatched event, an exhausted bounce cap, a prompt
 violation, a lost verdict — and mark nothing else. If you are handling it, it
 is status, and status gets a plain bullet. Most reports carry zero ⚠️; a
-decorative one tells a scanner the board has stopped when it has not.
+decorative one tells a scanner the fleet has stopped when it has not.
 
 ## Decisions
 

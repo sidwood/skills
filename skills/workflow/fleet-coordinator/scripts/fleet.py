@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import re
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,11 +80,73 @@ def save_config(path: Path, config: dict[str, Any], dry_run: bool = False) -> No
         raise
 
 
+def save_text_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".capture-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def persist_capture_text(
+    config_path: Path, agent_name: str, event_id: str | None, text: str
+) -> Path:
+    configured = os.environ.get("FLEET_CAPTURES_DIR")
+    captures_dir = (
+        Path(configured).expanduser().resolve()
+        if configured
+        else config_path.parent / "captures"
+    )
+    identity = event_id or f"manual-{time.time_ns()}"
+    safe_identity = re.sub(r"[^a-zA-Z0-9_.@-]", "-", identity)
+    safe_agent = re.sub(r"[^a-zA-Z0-9_.-]", "-", agent_name)
+    path = captures_dir / f"{safe_agent}-{safe_identity}-{time.time_ns()}.txt"
+    save_text_atomic(path, text)
+    return path
+
+
 def config_path_from_args(args: argparse.Namespace) -> Path:
     raw = args.config or os.environ.get("FLEET_CONFIG")
-    if not raw:
-        raise FleetError("config path required: --config or FLEET_CONFIG")
-    return Path(raw).expanduser().resolve()
+    if raw:
+        return Path(raw).expanduser().resolve()
+
+    state_dir = os.environ.get("FLEET_STATE_DIR")
+    if state_dir:
+        return (Path(state_dir).expanduser() / "fleet.json").resolve()
+
+    seed = os.environ.get("FLEET_SEED")
+    if seed:
+        return (Path(seed).expanduser() / "temp" / "fleet" / "fleet.json").resolve()
+
+    raise FleetError(
+        "config path required: --config, FLEET_CONFIG, or FLEET_SEED for "
+        "<seed>/temp/fleet/fleet.json"
+    )
+
+
+@contextmanager
+def config_lock(path: Path):
+    lock_path = path.with_name(f"{path.name}.lock")
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+")
+    except OSError as exc:
+        raise FleetError(f"cannot open fleet lock at {lock_path}: {exc}") from exc
+    with lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:
+            raise FleetError(f"cannot lock fleet config at {lock_path}: {exc}") from exc
+        yield
 
 
 def find_stream(config: dict[str, Any], ticket: str) -> dict[str, Any]:
@@ -263,13 +328,22 @@ def skipped_suites_text(stream: dict[str, Any]) -> str:
 
 
 def review_pass(stream: dict[str, Any]) -> int:
-    match = re.match(r"review-(\d+)", stream.get("phase", ""))
-    if match:
-        return int(match.group(1))
+    for candidate in (stream.get("phase", ""), stream.get("resumePhase", "")):
+        match = re.fullmatch(r"review-(\d+)", candidate)
+        if match:
+            return int(match.group(1))
     verdicts = stream.get("verdicts", [])
     if verdicts:
         return int(verdicts[-1].get("pass", len(verdicts)))
     return 1
+
+
+def next_review_pass(stream: dict[str, Any]) -> int:
+    verdicts = stream.get("verdicts", [])
+    if not verdicts:
+        return 1
+    latest = int(verdicts[-1].get("pass", len(verdicts)))
+    return max(latest, len(verdicts)) + 1
 
 
 def scope_out_targets(stream: dict[str, Any]) -> str:
@@ -347,13 +421,19 @@ def build_placeholder_map(
     gate_cmds = gate_command_block(config, files)
     review_n = review_pass(stream)
     verdict = latest_verdict(stream)
-    pre_fix = stream.get("preFixTip") or (verdict.get("tip") if verdict else "") or seed_tip
-    review_range = stream.get("reviewRange") or f"{seed_tip}..{branch_tip}"
+    pre_fix = stream.get("preFixTip") or (verdict.get("tip") if verdict else "") or base_tip
+    review_range = f"{base_tip}..{branch_tip}"
+    if role == "review" and review_n > 1:
+        configured_pre_fix = stream.get("preFixTip")
+        if not configured_pre_fix:
+            raise FleetError(f"review-{review_n} missing preFixTip")
+        pre_fix = verify_pre_fix_tip(checkout, configured_pre_fix, branch_tip)
+        review_range = f"{pre_fix}..{branch_tip}"
 
     values: dict[str, str] = {
         "TICKET": ticket,
         "SEED_PATH": str(seed),
-        "SEED_TIP": seed_tip,
+        "SEED_TIP": base_tip if role == "review" else seed_tip,
         "CLONE_PATH": str(checkout),
         "BRANCH": branch,
         "USER": user,
@@ -389,9 +469,6 @@ def build_placeholder_map(
         values["PROBLEM_FROM_CARD"] = stream.get("problem", "")
     if "inScopeSummary" in stream:
         values["IN_SCOPE_SUMMARY"] = stream.get("inScopeSummary", "")
-    if role == "review":
-        if stream.get("bounceCount", 0) > 0 or stream.get("phase", "").startswith("bounce"):
-            values["RANGE"] = f"{pre_fix}..{branch_tip}"
     return values
 
 
@@ -444,10 +521,14 @@ FINDING_RE_ALT = re.compile(
     r"\[(P[0-3])\]\s*(\([A-Z]\))\s+(\S+:\d+)\s+(.+)",
     re.IGNORECASE,
 )
-APPROVE_RE = re.compile(r"^APPROVE:\s*(yes|no)\s*$", re.IGNORECASE | re.MULTILINE)
+APPROVE_RE = re.compile(
+    r"^[ \t]*(?:[-*•][ \t]*)?APPROVE:\s*(yes|no)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 REVIEW_READY_RE = re.compile(r"REVIEW-READY", re.IGNORECASE)
 REVIEW_READY_TIP_RE = re.compile(
-    r"(?:^|[\n\r])(?:REVIEW-READY\s+)?(?:[-*]\s+)?"
+    r"(?:^|[\n\r])[ \t]*(?:(?:•[ \t]*)?REVIEW-READY\s+)?"
+    r"[ \t]*(?:[-*]\s+)?"
     r"(?:(?:\*\*)?(?:new\s+)?tip(?:\s+SHA)?(?:\*\*)?(?:\s+is)?\s*:?\s*(?:\*\*)?\s*([0-9a-f]{7,40})\b"
     r"|The\s+new\s+tip\s+SHA\s+is\s+([0-9a-f]{7,40})\b)",
     re.IGNORECASE,
@@ -494,7 +575,9 @@ def herdr_error_code(result: subprocess.CompletedProcess[str]) -> str | None:
 
 
 ECHOED_APPROVE_BLOCK_RE = re.compile(
-    r"End with exactly one of:\s*\nAPPROVE:\s*yes\s*\nAPPROVE:\s*no\s*\n",
+    r"End with exactly one of:\s*\n"
+    r"[ \t]*(?:[-*•][ \t]*)?APPROVE:\s*yes\s*\n"
+    r"[ \t]*(?:[-*•][ \t]*)?APPROVE:\s*no\s*\n",
     re.IGNORECASE,
 )
 
@@ -513,9 +596,33 @@ def parse_approve_verdict(text: str) -> bool | None:
 
 def verify_tip_in_checkout(checkout: Path, tip: str) -> str:
     try:
-        return git_output(checkout, "rev-parse", "--verify", tip)
+        return git_output(checkout, "rev-parse", "--verify", f"{tip}^{{commit}}")
     except FleetError as exc:
         raise FleetError(f"REVIEW-READY tip {tip[:7]} not in checkout") from exc
+
+
+def verify_pre_fix_tip(checkout: Path, pre_fix_tip: str, tip: str) -> str:
+    resolved = verify_tip_in_checkout(checkout, pre_fix_tip)
+    resolved_tip = verify_tip_in_checkout(checkout, tip)
+    if resolved == resolved_tip:
+        raise FleetError(f"pre-fix tip {resolved[:7]} produces an empty review range")
+    result = run_cmd(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "merge-base",
+            "--is-ancestor",
+            resolved,
+            resolved_tip,
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        raise FleetError(
+            f"pre-fix tip {resolved[:7]} is not an ancestor of {resolved_tip[:7]}"
+        )
+    return resolved
 
 
 def parse_findings(text: str) -> list[Finding]:
@@ -536,8 +643,13 @@ def parse_findings(text: str) -> list[Finding]:
 
 
 def parse_capture(text: str, role: str, checkout: Path | None = None) -> CaptureResult:
-    if REVIEW_READY_RE.search(text):
-        idx = text.upper().find("REVIEW-READY")
+    if role not in {"impl", "review"}:
+        raise FleetError(f"unknown capture role: {role or '(missing)'}")
+
+    if role == "impl":
+        if not REVIEW_READY_RE.search(text):
+            raise FleetError("implementer capture missing REVIEW-READY")
+        idx = text.upper().rfind("REVIEW-READY")
         tail = text[idx:] if idx >= 0 else text
         pre_fix_match = PRE_FIX_RE.search(text)
         pre_fix_tip = pre_fix_match.group(1) if pre_fix_match else None
@@ -557,7 +669,7 @@ def parse_capture(text: str, role: str, checkout: Path | None = None) -> Capture
         )
     approve = parse_approve_verdict(text)
     if approve is None:
-        raise FleetError("no REVIEW-READY or APPROVE line")
+        raise FleetError("reviewer capture missing APPROVE line")
     findings = tuple(parse_findings(text))
     return CaptureResult(
         kind="verdict",
@@ -608,15 +720,156 @@ def herdr_pane_read(config: dict[str, Any], pane_id: str, dry_run: bool = False)
 
 def herdr_tab_close(config: dict[str, Any], tab_id: str, dry_run: bool = False) -> None:
     cmd = herdr_base(config) + ["tab", "close", tab_id]
-    run_cmd(cmd, dry_run=dry_run)
+    result = run_cmd(cmd, dry_run=dry_run, check=False)
+    if dry_run or result.returncode == 0:
+        return
+    # A retry after close-succeeded/config-save-crashed is complete, not an
+    # error. Herdr exposes that state as tab_not_found.
+    if herdr_error_code(result) == "tab_not_found":
+        return
+    detail = (result.stderr or result.stdout or "tab close failed").strip()
+    raise FleetError(detail)
 
 
 def agent_record(stream: dict[str, Any], name: str) -> dict[str, Any]:
-    agents = stream.get("agents", {})
-    for role, record in agents.items():
-        if record.get("name") == name:
-            return record
-    raise FleetError(f"agent {name} not recorded on stream")
+    matches = [
+        (slot, record)
+        for slot, record in stream.get("agents", {}).items()
+        if record.get("name") == name
+    ]
+    if not matches:
+        raise FleetError(f"agent {name} not recorded on stream")
+    if len(matches) != 1:
+        raise FleetError(f"agent {name} is recorded in multiple role slots")
+    slot, record = matches[0]
+    if not record.get("role"):
+        record["role"] = slot
+    if record.get("role") != slot:
+        raise FleetError(
+            f"agent {name} role {record.get('role')!r} does not match slot {slot!r}"
+        )
+    return record
+
+
+def find_agent_record(
+    config: dict[str, Any], name: str
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    matches: list[tuple[dict[str, Any], str, dict[str, Any]]] = []
+    for stream in config.get("streams", []):
+        for slot, record in stream.get("agents", {}).items():
+            if record.get("name") == name:
+                matches.append((stream, slot, record))
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise FleetError(f"agent {name} is recorded on multiple streams or role slots")
+    stream, slot, record = matches[0]
+    if not record.get("role"):
+        record["role"] = slot
+    if record.get("role") != slot:
+        raise FleetError(
+            f"agent {name} role {record.get('role')!r} does not match slot {slot!r}"
+        )
+    return stream, record
+
+
+def captured_event_binding(
+    config: dict[str, Any], event_id: str
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for stream in config.get("streams", []):
+        for event in stream.get("events", []):
+            if event.get("eventId") == event_id:
+                matches.append((stream, event))
+    if len(matches) > 1:
+        raise FleetError(
+            f"event ID {event_id!r} is recorded more than once; "
+            "reconcile the duplicate before continuing"
+        )
+    return matches[0] if matches else None
+
+
+def captured_event(config: dict[str, Any], event_id: str) -> dict[str, Any] | None:
+    binding = captured_event_binding(config, event_id)
+    return binding[1] if binding else None
+
+
+CAPTURE_EVENT_KINDS = frozenset({"review-ready", "verdict"})
+RESOLUTION_EVENT_KINDS = frozenset(
+    {"resolved-lost-output", "resolved-invalid-output"}
+)
+
+
+def captured_event_for_record(
+    stream: dict[str, Any], record: dict[str, Any], agent_name: str
+) -> dict[str, Any] | None:
+    if record.get("dispatchState") not in {"captured", "closed"}:
+        return None
+    capture_event_id = record.get("captureEventId")
+    matches = [
+        event
+        for event in stream.get("events", [])
+        if event.get("agent") == agent_name
+        and event.get("kind") in CAPTURE_EVENT_KINDS
+    ]
+    if capture_event_id:
+        matches = [event for event in matches if event.get("eventId") == capture_event_id]
+    else:
+        captured_at = record.get("capturedAt")
+        if captured_at:
+            matches = [event for event in matches if event.get("at") == captured_at]
+    if len(matches) > 1:
+        raise FleetError(
+            f"agent {agent_name} has ambiguous legacy capture history; "
+            "reconcile it before attaching an event ID"
+        )
+    return matches[0] if matches else None
+
+
+def record_matches_capture_event(
+    record: dict[str, Any], event_id: str, event: dict[str, Any]
+) -> bool:
+    """Return whether a current role record is the event's captured dispatch."""
+    capture_event_id = record.get("captureEventId")
+    if capture_event_id:
+        return capture_event_id == event_id
+    return bool(
+        record.get("dispatchState") in {"captured", "closed"}
+        and record.get("capturedAt")
+        and record.get("capturedAt") == event.get("at")
+    )
+
+
+def validate_capture_context(
+    stream: dict[str, Any], role: str, capture_kind: str
+) -> int | None:
+    phase = str(stream.get("phase", ""))
+    if role == "impl":
+        if capture_kind != "review-ready":
+            raise FleetError("implementer capture must contain REVIEW-READY")
+        if phase != "implementing":
+            raise FleetError(
+                f"implementer capture requires phase implementing, found {phase or '(missing)'}"
+            )
+        return None
+
+    if role == "review":
+        if capture_kind != "verdict":
+            raise FleetError("reviewer capture must contain an APPROVE verdict")
+        match = re.fullmatch(r"review-(\d+)", phase)
+        if not match:
+            raise FleetError(
+                f"reviewer capture requires phase review-N, found {phase or '(missing)'}"
+            )
+        active_pass = int(match.group(1))
+        expected_pass = next_review_pass(stream)
+        if active_pass != expected_pass:
+            raise FleetError(
+                f"active review pass {active_pass} does not match next pass {expected_pass}"
+            )
+        return active_pass
+
+    raise FleetError(f"unknown capture role: {role or '(missing)'}")
 
 
 def record_capture(
@@ -625,28 +878,38 @@ def record_capture(
     name: str,
     captured: CaptureResult,
     config_path: Path,
+    event_id: str | None = None,
+    capture_path: Path | None = None,
     dry_run: bool = False,
 ) -> None:
     record = agent_record(stream, name)
     role = record.get("role", "")
+    active_review_pass = validate_capture_context(stream, role, captured.kind)
     if captured.kind == "review-ready":
-        stream["tip"] = captured.tip or stream.get("tip", "")
-        if captured.pre_fix_tip:
-            stream["preFixTip"] = captured.pre_fix_tip
-        review_n = review_pass(stream)
+        new_tip = captured.tip or stream.get("tip", "")
+        prior_verdicts = stream.get("verdicts", [])
+        if prior_verdicts:
+            if not captured.pre_fix_tip:
+                raise FleetError("bounced REVIEW-READY missing pre-fix tip")
+            pre_fix_tip = verify_pre_fix_tip(
+                Path(stream["checkout"]), captured.pre_fix_tip, new_tip
+            )
+            stream["preFixTip"] = pre_fix_tip
+            stream["reviewRange"] = f"{pre_fix_tip}..{new_tip}"
+        else:
+            stream["reviewRange"] = f"{stream.get('baseTip', '')}..{new_tip}"
+        review_n = next_review_pass(stream)
+        stream["tip"] = new_tip
         stream["phase"] = f"review-{review_n}"
-        stream["reviewRange"] = f"{stream.get('baseTip', '')}..{stream['tip']}"
-        stream.setdefault("events", []).append(
-            {
-                "at": utc_now_iso(),
-                "agent": name,
-                "kind": "review-ready",
-                "tip": captured.tip,
-            }
-        )
+        event = {
+            "at": utc_now_iso(),
+            "agent": name,
+            "kind": "review-ready",
+            "tip": captured.tip,
+        }
     else:
         verdict = {
-            "pass": len(stream.get("verdicts", [])) + 1,
+            "pass": active_review_pass,
             "tip": stream.get("tip", ""),
             "approve": captured.approve,
             "findings": [
@@ -656,43 +919,161 @@ def record_capture(
         }
         stream.setdefault("verdicts", []).append(verdict)
         stream["phase"] = "verdict-pending"
-        stream.setdefault("events", []).append(
-            {
-                "at": utc_now_iso(),
-                "agent": name,
-                "kind": "verdict",
-                "approve": captured.approve,
-            }
-        )
+        event = {
+            "at": utc_now_iso(),
+            "agent": name,
+            "kind": "verdict",
+            "pass": active_review_pass,
+            "approve": captured.approve,
+        }
+    if event_id is not None:
+        event["eventId"] = event_id
+    if capture_path is not None:
+        event["capturePath"] = str(capture_path)
+    record["dispatchState"] = "captured"
+    record["capturedAt"] = event["at"]
+    record["captureKind"] = captured.kind
+    record.pop("lastCaptureFailure", None)
+    if event_id is not None:
+        record["captureEventId"] = event_id
+    stream.setdefault("events", []).append(event)
     save_config(config_path, config, dry_run=dry_run)
+
+
+def capture_kind_for_role(role: str) -> str:
+    if role == "impl":
+        return "review-ready"
+    if role == "review":
+        return "verdict"
+    raise FleetError(f"unknown capture role: {role or '(missing)'}")
+
+
+def close_captured_agent(
+    config: dict[str, Any],
+    record: dict[str, Any],
+    capture_event: dict[str, Any] | None = None,
+    dry_run: bool = False,
+) -> bool:
+    if record.get("dispatchState") == "closed":
+        if (
+            capture_event is not None
+            and record.get("closedAt")
+            and not capture_event.get("closedAt")
+        ):
+            capture_event["closedAt"] = record["closedAt"]
+            return True
+        return False
+    tab_id = record.get("tabId")
+    if not tab_id:
+        raise FleetError("cannot close: no tabId recorded")
+    herdr_tab_close(config, tab_id, dry_run=dry_run)
+    closed_at = utc_now_iso()
+    record["dispatchState"] = "closed"
+    record["closedAt"] = closed_at
+    if capture_event is not None:
+        capture_event["closedAt"] = closed_at
+    return True
 
 
 def cmd_capture(args: argparse.Namespace) -> int:
     config_path = config_path_from_args(args)
     config = load_config(config_path)
-    stream = None
-    record = None
-    for candidate in config.get("streams", []):
-        for item in candidate.get("agents", {}).values():
-            if item.get("name") == args.agent_name:
-                stream = candidate
-                record = item
-                break
-        if stream:
-            break
-    if not stream or not record:
+    event_id = getattr(args, "event_id", None)
+    capture_file_arg = getattr(args, "capture_file", None)
+    if capture_file_arg and event_id is None:
+        raise FleetError("--capture-file requires --event-id")
+    found = find_agent_record(config, args.agent_name)
+
+    if event_id is not None:
+        existing_binding = captured_event_binding(config, event_id)
+        if existing_binding is not None:
+            existing_stream, existing = existing_binding
+            if existing.get("agent") != args.agent_name:
+                raise FleetError(
+                    f"event ID {event_id!r} already belongs to "
+                    f"{existing.get('agent', 'an unknown agent')}"
+                )
+            if existing.get("kind") not in CAPTURE_EVENT_KINDS:
+                raise FleetError(f"event ID {event_id!r} is not a capture event")
+            if args.close and not existing.get("closedAt"):
+                if found is None:
+                    raise FleetError(
+                        f"cannot close event {event_id!r}: its dispatch record is missing"
+                    )
+                found_stream, existing_record = found
+                if found_stream is not existing_stream or not record_matches_capture_event(
+                    existing_record, event_id, existing
+                ):
+                    raise FleetError(
+                        f"cannot close event {event_id!r}: the current agent record "
+                        "belongs to a different dispatch"
+                    )
+                if close_captured_agent(
+                    config, existing_record, existing, args.dry_run
+                ):
+                    save_config(config_path, config, dry_run=args.dry_run)
+            return 0
+
+    prior_capture = None
+    if found is not None:
+        prior_stream, prior_record = found
+        prior_capture = captured_event_for_record(
+            prior_stream, prior_record, args.agent_name
+        )
+    if prior_capture is not None:
+        prior_event_id = prior_capture.get("eventId")
+        if event_id is not None and prior_event_id not in {None, event_id}:
+            raise FleetError(
+                f"agent {args.agent_name} was already captured as event "
+                f"{prior_event_id!r}; refusing event {event_id!r}"
+            )
+        changed = False
+        if event_id is not None and prior_event_id is None:
+            prior_capture["eventId"] = event_id
+            changed = True
+            if found is not None:
+                _stream, prior_record = found
+                prior_record["captureEventId"] = event_id
+        if args.close and found is not None:
+            _stream, prior_record = found
+            changed = (
+                close_captured_agent(
+                    config, prior_record, prior_capture, args.dry_run
+                )
+                or changed
+            )
+        if changed:
+            save_config(config_path, config, dry_run=args.dry_run)
+        return 0
+
+    if found is None:
         raise FleetError(f"agent not on any stream: {args.agent_name}")
+    stream, record = found
+    role = record.get("role", "")
+    validate_capture_context(stream, role, capture_kind_for_role(role))
 
     text = ""
-    try:
-        text = herdr_agent_read(config, args.agent_name, dry_run=args.dry_run)
-    except FleetError as exc:
-        if str(exc) != "agent_not_found":
-            raise
-        pane_id = record.get("paneId")
-        if not pane_id:
-            raise FleetError("agent_not_found and no paneId recorded") from exc
-        text = herdr_pane_read(config, pane_id, dry_run=args.dry_run)
+    capture_path: Path | None = None
+    if capture_file_arg:
+        capture_path = Path(capture_file_arg).expanduser().resolve()
+        if not capture_path.is_file():
+            raise FleetError(f"capture file not found: {capture_path}")
+        text = capture_path.read_text()
+    else:
+        try:
+            text = herdr_agent_read(config, args.agent_name, dry_run=args.dry_run)
+        except FleetError as agent_exc:
+            pane_id = record.get("paneId")
+            if not pane_id:
+                raise FleetError(
+                    f"agent read failed and no paneId is recorded: {agent_exc}"
+                ) from agent_exc
+            try:
+                text = herdr_pane_read(config, pane_id, dry_run=args.dry_run)
+            except FleetError as pane_exc:
+                raise FleetError(
+                    f"agent read failed ({agent_exc}); pane read failed ({pane_exc})"
+                ) from pane_exc
 
     if args.dry_run:
         print(f"# dry-run: would parse capture for {args.agent_name}")
@@ -700,14 +1081,153 @@ def cmd_capture(args: argparse.Namespace) -> int:
             print(f"# dry-run: would close tab {record.get('tabId')}")
         return 0
 
-    captured = parse_capture(text, record.get("role", ""), Path(stream["checkout"]))
-    record_capture(config, stream, args.agent_name, captured, config_path)
+    if capture_path is None:
+        capture_path = persist_capture_text(
+            config_path, args.agent_name, event_id, text
+        )
+    try:
+        captured = parse_capture(text, role, Path(stream["checkout"]))
+        record_capture(
+            config,
+            stream,
+            args.agent_name,
+            captured,
+            config_path,
+            event_id=event_id,
+            capture_path=capture_path,
+        )
+    except FleetError as exc:
+        failed_at = utc_now_iso()
+        record["lastCaptureFailure"] = {
+            "at": failed_at,
+            "eventId": event_id,
+            "capturePath": str(capture_path),
+            "error": str(exc),
+        }
+        save_config(config_path, config)
+        raise FleetError(f"{exc}; transcript saved at {capture_path}") from exc
 
     if args.close:
-        tab_id = record.get("tabId")
-        if not tab_id:
-            raise FleetError("cannot close: no tabId recorded")
-        herdr_tab_close(config, tab_id)
+        current_event = (
+            captured_event_binding(config, event_id)[1]
+            if event_id is not None
+            else captured_event_for_record(stream, record, args.agent_name)
+        )
+        if close_captured_agent(config, record, current_event):
+            save_config(config_path, config)
+    return 0
+
+
+def cmd_resolve_event(args: argparse.Namespace) -> int:
+    """Durably acknowledge an event whose output cannot be recovered."""
+    config_path = config_path_from_args(args)
+    config = load_config(config_path)
+    event_id = args.event_id
+    reason = args.reason.strip()
+    if not reason:
+        raise FleetError("resolve-event requires a non-empty reason")
+
+    existing_binding = captured_event_binding(config, event_id)
+    if existing_binding is not None:
+        existing_stream, existing = existing_binding
+        if existing.get("agent") != args.agent_name:
+            raise FleetError(
+                f"event ID {event_id!r} already belongs to "
+                f"{existing.get('agent', 'an unknown agent')}"
+            )
+        if existing.get("kind") in RESOLUTION_EVENT_KINDS:
+            return 0
+        if existing.get("kind") not in CAPTURE_EVENT_KINDS:
+            raise FleetError(f"event ID {event_id!r} cannot be resolved")
+        if existing.get("closedAt") or existing.get("teardownResolvedAt"):
+            return 0
+
+        resolved_at = utc_now_iso()
+        existing["teardownResolvedAt"] = resolved_at
+        existing["teardownResolutionReason"] = reason
+        found = find_agent_record(config, args.agent_name)
+        if found is not None:
+            found_stream, record = found
+            if found_stream is existing_stream and record_matches_capture_event(
+                record, event_id, existing
+            ):
+                record["dispatchState"] = "resolved"
+                record["resolvedAt"] = resolved_at
+                record["resolutionReason"] = reason
+        save_config(config_path, config, dry_run=args.dry_run)
+        return 0
+
+    found = find_agent_record(config, args.agent_name)
+    if found is None:
+        raise FleetError(f"agent not on any stream: {args.agent_name}")
+    stream, record = found
+    capture_failure = record.get("lastCaptureFailure")
+    if isinstance(capture_failure, dict) and capture_failure.get("capturePath"):
+        if not args.capture_file:
+            raise FleetError(
+                "cannot resolve lost output: a saved capture exists at "
+                f"{capture_failure['capturePath']}; correct or reparse that evidence, "
+                "or explicitly resolve it with --capture-file"
+            )
+        saved_path = Path(str(capture_failure["capturePath"])).expanduser().resolve()
+        supplied_path = Path(args.capture_file).expanduser().resolve()
+        if supplied_path != saved_path:
+            raise FleetError(
+                "--capture-file must name the exact saved malformed capture at "
+                f"{saved_path}"
+            )
+        if capture_failure.get("eventId") != event_id:
+            raise FleetError(
+                "--event-id must match the saved malformed capture event ID "
+                f"{capture_failure.get('eventId')!r}"
+            )
+        try:
+            supplied_path.read_text()
+        except OSError as exc:
+            raise FleetError(
+                f"cannot read saved malformed capture at {supplied_path}: {exc}"
+            ) from exc
+        resolved_at = utc_now_iso()
+        stream.setdefault("events", []).append(
+            {
+                "at": resolved_at,
+                "agent": args.agent_name,
+                "eventId": event_id,
+                "kind": "resolved-invalid-output",
+                "reason": reason,
+                "capturePath": str(supplied_path),
+                "captureError": capture_failure.get("error", ""),
+            }
+        )
+        record["dispatchState"] = "resolved"
+        record["captureEventId"] = event_id
+        record["resolvedAt"] = resolved_at
+        record["resolutionReason"] = reason
+        if stream.get("phase") != "hold":
+            stream["resumePhase"] = stream.get("phase", "")
+        stream["phase"] = "hold"
+        stream["holdReason"] = f"invalid output for {event_id}: {reason}"
+        save_config(config_path, config, dry_run=args.dry_run)
+        return 0
+    resolved_at = utc_now_iso()
+    stream.setdefault("events", []).append(
+        {
+            "at": resolved_at,
+            "agent": args.agent_name,
+            "eventId": event_id,
+            "kind": "resolved-lost-output",
+            "reason": reason,
+        }
+    )
+    record["dispatchState"] = "resolved"
+    record["captureEventId"] = event_id
+    record["resolvedAt"] = resolved_at
+    record["resolutionReason"] = reason
+    if stream.get("phase") != "hold":
+        stream["resumePhase"] = stream.get("phase", "")
+    stream["phase"] = "hold"
+    stream["holdReason"] = f"lost output for {event_id}: {reason}"
+    save_config(config_path, config, dry_run=args.dry_run)
     return 0
 
 
@@ -718,7 +1238,7 @@ def next_action(config: dict[str, Any], stream: dict[str, Any]) -> str:
     if phase == "approved":
         return f"fleet land {stream['ticket']}"
     if phase == "hold":
-        return "escalate: verdict hold"
+        return "escalate: ticket hold"
     if phase == "verdict-pending":
         return f"fleet verdict {stream['ticket']}"
     if phase == "implementing" or phase.startswith("review-"):
@@ -741,9 +1261,29 @@ def drift_warnings(config: dict[str, Any], stream: dict[str, Any], agents: list[
         warnings.append(f"{stream['ticket']}: seed tip unreadable: {exc}")
 
     live_names = {a.get("name") for a in agents}
+    startup_hints = {
+        "reserved": "tab creation was not recorded; reconcile before retrying",
+        "tab-created": "agent start was not recorded; inspect the tab before retrying",
+        "started": "prompting was not recorded; inspect the agent before retrying",
+        "prompting": "prompt completion is unknown; inspect or capture the agent before retrying",
+    }
     for role, record in stream.get("agents", {}).items():
         name = record.get("name")
-        if name and name not in live_names and stream.get("phase") not in ("landed", "verdict-pending"):
+        dispatch_state = record.get("dispatchState")
+        if dispatch_state in {"closed", "resolved"}:
+            continue
+        if dispatch_state in startup_hints:
+            warnings.append(
+                f"{stream['ticket']}: agent {name or '?'} ({role}) startup incomplete "
+                f"at {dispatch_state}; {startup_hints[dispatch_state]}"
+            )
+            continue
+        if dispatch_state == "active" and not name:
+            warnings.append(
+                f"{stream['ticket']}: active dispatch ({role}) has no agent name"
+            )
+            continue
+        if name and name not in live_names:
             warnings.append(f"{stream['ticket']}: agent {name} ({role}) not in herdr list")
     return warnings
 
@@ -833,6 +1373,24 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     verdict = latest_verdict(stream)
     if not verdict:
         raise FleetError("no verdict recorded")
+
+    recorded_decision = verdict.get("decision")
+    if isinstance(recorded_decision, dict) and recorded_decision.get("appliedAt"):
+        action = recorded_decision.get("action")
+        reason = recorded_decision.get("reason")
+        if action not in {"BOUNCE", "LAND", "ESCALATE"} or not isinstance(
+            reason, str
+        ):
+            raise FleetError("latest verdict has an invalid recorded decision")
+        print(f"{action}: {reason}")
+        return 0
+
+    phase = stream.get("phase", "")
+    if phase != "verdict-pending":
+        raise FleetError(
+            f"verdict requires phase verdict-pending, found {phase or '(missing)'}"
+        )
+
     defer_tag = deferred_tag(config, stream)
     action, reason = verdict_decision(
         verdict,
@@ -850,36 +1408,114 @@ def cmd_verdict(args: argparse.Namespace) -> int:
             stream["bounceCount"] = int(stream.get("bounceCount", 0)) + 1
             stream["phase"] = f"bounce-{stream['bounceCount']}"
         elif action == "LAND":
-            stream["approvedTip"] = stream.get("tip")
+            stream["approvedTip"] = verdict.get("tip")
             stream["phase"] = "approved"
         elif action == "ESCALATE":
             stream["phase"] = "hold"
+        verdict["decision"] = {
+            "action": action,
+            "reason": reason,
+            "appliedAt": utc_now_iso(),
+        }
         save_config(config_path, config, dry_run=args.dry_run)
     return 0
 
 
-def derive_agent_name(ticket: str, role: str) -> str:
-    slug = ticket.lower().replace(".", "-")
-    suffix = "-impl" if role == "impl" else "-review"
+def next_dispatch_number(stream: dict[str, Any], role: str) -> int:
+    raw = stream.get("dispatchCounters", {}).get(role, 0)
+    try:
+        current = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise FleetError(f"invalid {role} dispatch counter: {raw!r}") from exc
+    if current < 0:
+        raise FleetError(f"invalid {role} dispatch counter: {current}")
+    return current + 1
+
+
+def derive_agent_name(ticket: str, role: str, dispatch_number: int) -> str:
+    if role not in ("impl", "review"):
+        raise FleetError(f"unknown dispatch role: {role}")
+    if dispatch_number < 1:
+        raise FleetError(f"invalid dispatch number: {dispatch_number}")
+
+    canonical_ticket = ticket.lower()
+    slug = canonical_ticket.replace(".", "-")
+    ticket_hash = hashlib.sha256(canonical_ticket.encode()).hexdigest()[:8]
+    suffix = f"-{ticket_hash}-{role}-{dispatch_number}"
     slug = re.sub(r"[^a-z0-9_-]", "-", slug)
     slug = re.sub(r"-+", "-", slug).strip("-")
     if not slug or not slug[0].isalpha():
         slug = f"t{slug}"
     max_slug = 32 - len(suffix)
+    if max_slug < 1:
+        raise FleetError(
+            f"dispatch number too long for a Herdr agent name: {dispatch_number}"
+        )
     if len(slug) > max_slug:
         slug = slug[:max_slug].rstrip("-")
-    name = f"{slug}{suffix}"
-    return name
+    return f"{slug}{suffix}"
 
 
-def recipe_for_stream(config: dict[str, Any], stream: dict[str, Any], role: str) -> dict[str, Any]:
-    key = stream.get("implRecipe") if role == "impl" else stream.get("reviewRecipe")
-    if not key:
+def recipe_choice_for_stream(
+    config: dict[str, Any], stream: dict[str, Any], role: str
+) -> tuple[str, str, dict[str, Any]]:
+    requested = stream.get("implRecipe") if role == "impl" else stream.get("reviewRecipe")
+    if not isinstance(requested, str) or not requested:
         raise FleetError(f"no recipe for role {role}")
     recipes = config.get("recipes", {})
-    if key not in recipes:
-        raise FleetError(f"unknown recipe: {key}")
-    return recipes[key]
+    if not isinstance(recipes, dict) or requested not in recipes:
+        raise FleetError(f"unknown recipe: {requested}")
+    primary = recipes[requested]
+    if not isinstance(primary, dict):
+        raise FleetError(f"invalid recipe: {requested}")
+    fallbacks = primary.get("fallbacks", [])
+    if not isinstance(fallbacks, list) or not all(
+        isinstance(item, str) and item for item in fallbacks
+    ):
+        raise FleetError(f"invalid fallback list for recipe: {requested}")
+    candidates = [requested, *fallbacks]
+    if len(candidates) != len(set(candidates)):
+        raise FleetError(f"duplicate or self fallback for recipe: {requested}")
+
+    usage_pools = config.get("usagePools", {})
+    if not isinstance(usage_pools, dict):
+        raise FleetError("usagePools must be an object")
+    skipped: list[str] = []
+    for key in candidates:
+        recipe = recipes.get(key)
+        if not isinstance(recipe, dict):
+            raise FleetError(f"unknown fallback recipe: {key}")
+        enabled = recipe.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise FleetError(f"recipe enabled switch must be boolean: {key}")
+        if not enabled:
+            skipped.append(f"{key}=disabled")
+            continue
+        pool_key = recipe.get("usagePool")
+        if pool_key is not None:
+            if not isinstance(pool_key, str) or not pool_key:
+                raise FleetError(f"invalid usage pool for recipe: {key}")
+            pool = usage_pools.get(pool_key)
+            if not isinstance(pool, dict):
+                raise FleetError(f"unknown usage pool {pool_key!r} for recipe: {key}")
+            state = pool.get("state", "available")
+            if state not in {"available", "spent"}:
+                raise FleetError(f"invalid state for usage pool {pool_key!r}: {state!r}")
+            if state == "spent":
+                skipped.append(f"{key}=spent:{pool_key}")
+                continue
+        return requested, key, recipe
+
+    detail = ", ".join(skipped) or "no candidates"
+    raise FleetError(
+        f"operator alert: no available {role} recipe for {requested}; {detail}"
+    )
+
+
+def recipe_for_stream(
+    config: dict[str, Any], stream: dict[str, Any], role: str
+) -> dict[str, Any]:
+    return recipe_choice_for_stream(config, stream, role)[2]
 
 
 def herdr_tab_create(
@@ -917,6 +1553,8 @@ def herdr_tab_create(
 
 AGENT_START_ATTEMPTS = 3
 AGENT_START_RETRY_SECONDS = 3.0
+AGENT_READY_ATTEMPTS = 10
+AGENT_READY_RETRY_SECONDS = 1.0
 PROMPT_RECEIPT_ATTEMPTS = 4
 PROMPT_RECEIPT_RETRY_SECONDS = 5.0
 # Long enough to be distinctive, short enough to sit inside the first rendered
@@ -925,6 +1563,23 @@ PROMPT_SIGNATURE_LENGTH = 32
 # A pane can echo a submitted prompt and still refuse it: an unauthenticated
 # CLI answers with a login demand instead of working (the drawer-1 incident).
 LOGIN_MARKERS = ("Not logged in", "Login expired", "Please run /login")
+STARTUP_TRUST_DIALOGS = {
+    "codex": (
+        ("workspace trust", "do you trust the contents of this directory?"),
+        ("1", "enter"),
+    ),
+    "claude": (
+        (
+            "quick safety check: is this a project you created or one you trust?",
+            "yes, i trust this folder",
+        ),
+        ("enter",),
+    ),
+}
+CODEX_RESTART_MARKERS = (
+    "update ran successfully! please restart codex.",
+    "codex was successfully upgraded",
+)
 
 
 def prompt_signature(text: str, length: int = PROMPT_SIGNATURE_LENGTH) -> str:
@@ -939,6 +1594,35 @@ def herdr_agent_status(config: dict[str, Any], name: str) -> str:
         return payload.get("result", {}).get("agent", {}).get("agent_status", "")
     except (json.JSONDecodeError, AttributeError):
         return ""
+
+
+def normalized_transcript(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def startup_trust_keys(kind: str, transcript: str) -> tuple[str, ...] | None:
+    dialog = STARTUP_TRUST_DIALOGS.get(kind)
+    if dialog is None:
+        return None
+    markers, keys = dialog
+    visible = normalized_transcript(transcript)
+    return keys if any(marker in visible for marker in markers) else None
+
+
+def codex_restart_required(
+    config: dict[str, Any], name: str, pane_id: str
+) -> bool:
+    transcripts: list[str] = []
+    for reader, target in (
+        (herdr_agent_read, name),
+        (herdr_pane_read, pane_id),
+    ):
+        try:
+            transcripts.append(reader(config, target))
+        except FleetError:
+            continue
+    combined = normalized_transcript("\n".join(transcripts))
+    return any(marker in combined for marker in CODEX_RESTART_MARKERS)
 
 
 def confirm_prompt_receipt(
@@ -1015,17 +1699,79 @@ def herdr_agent_start(
         return
     # A pane fresh from tab create may not have an available shell yet;
     # herdr reports agent_pane_busy. Wait and retry rather than orphan the tab.
+    # Codex can instead start successfully but pause before Herdr registration
+    # on its numbered workspace-trust chooser. Accept that one known dialog and
+    # wait briefly for the already-running process to become observable.
     for attempt in range(1, AGENT_START_ATTEMPTS + 1):
         result = run_cmd(cmd, check=False)
         if result.returncode == 0:
             return
         output = f"{result.stdout}\n{result.stderr}"
+        if herdr_error_code(result) == "agent_not_ready":
+            try:
+                transcript = herdr_pane_read(config, pane_id)
+            except FleetError:
+                transcript = ""
+            trust_keys = startup_trust_keys(recipe["kind"], transcript)
+            if trust_keys is not None:
+                run_cmd(
+                    herdr_base(config)
+                    + ["pane", "send-keys", pane_id, *trust_keys]
+                )
+                for ready_attempt in range(1, AGENT_READY_ATTEMPTS + 1):
+                    if herdr_agent_status(config, name) in {"idle", "working", "done"}:
+                        return
+                    if ready_attempt < AGENT_READY_ATTEMPTS:
+                        time.sleep(AGENT_READY_RETRY_SECONDS)
         if "agent_pane_busy" not in output or attempt == AGENT_START_ATTEMPTS:
             raise FleetError(
                 f"command failed ({result.returncode}): {' '.join(cmd)}\n"
                 f"{(result.stderr or result.stdout).strip()}"
             )
         time.sleep(AGENT_START_RETRY_SECONDS)
+
+
+def herdr_recipe_pre_start(
+    config: dict[str, Any],
+    name: str,
+    pane_id: str,
+    recipe: dict[str, Any],
+    dry_run: bool = False,
+) -> bool:
+    """Run a trusted recipe environment step in the fresh pane, when present."""
+    step = recipe.get("envPreStep")
+    if step is None:
+        return False
+    if not isinstance(step, str) or not step.strip():
+        raise FleetError("recipe envPreStep must be a non-empty string")
+    marker = f"__FLEET_PRE_START_{name}__"
+    command = f"{{ {step}; }} && printf '\\n{marker}\\n'"
+    commands = [
+        herdr_base(config) + ["pane", "send-text", pane_id, command],
+        herdr_base(config) + ["pane", "send-keys", pane_id, "enter"],
+        herdr_base(config)
+        + [
+            "pane",
+            "wait-output",
+            "--match",
+            marker,
+            "--source",
+            "recent-unwrapped",
+            "--lines",
+            "40",
+            "--timeout",
+            "30000",
+            pane_id,
+        ],
+    ]
+    for cmd in commands:
+        result = run_cmd(cmd, check=False, dry_run=dry_run)
+        if not dry_run and result.returncode != 0:
+            raise FleetError(
+                f"recipe environment pre-step failed for {name}: "
+                f"{(result.stderr or result.stdout).strip() or 'no diagnostic'}"
+            )
+    return True
 
 
 def herdr_agent_prompt(
@@ -1093,35 +1839,143 @@ def _raise_on_login_demand(config: dict[str, Any], name: str) -> None:
             )
 
 
+def validate_dispatch_phase(stream: dict[str, Any], role: str) -> None:
+    phase = str(stream.get("phase", ""))
+    effective = phase
+    if phase == "hold":
+        effective = str(stream.get("resumePhase", ""))
+        if not effective:
+            raise FleetError("cannot dispatch from hold without a recoverable resumePhase")
+
+    if role == "impl" and (
+        effective in {"ready", "implementing"} or effective.startswith("bounce-")
+    ):
+        return
+    if role == "review" and (
+        effective in {"review", "in-review"}
+        or re.fullmatch(r"review-\d+", effective)
+    ):
+        return
+    raise FleetError(
+        f"cannot dispatch {role} while phase is {phase or '(missing)'}"
+        + (f" (resumePhase {effective or '(missing)'})" if phase == "hold" else "")
+    )
+
+
 def cmd_dispatch(args: argparse.Namespace) -> int:
     config_path = config_path_from_args(args)
     config = load_config(config_path)
     stream = find_stream(config, args.ticket)
     role = args.role
-    name = derive_agent_name(args.ticket, role)
-    recipe = recipe_for_stream(config, stream, role)
+    dispatch_number = next_dispatch_number(stream, role)
+    name = derive_agent_name(args.ticket, role, dispatch_number)
+    requested_recipe, recipe_key, recipe = recipe_choice_for_stream(
+        config, stream, role
+    )
     label = f"{args.ticket} {role}"
     prompt_file = Path(args.prompt_file)
     if not prompt_file.is_file():
         raise FleetError(f"prompt file not found: {prompt_file}")
 
-    ids = herdr_tab_create(config, stream["checkout"], label, dry_run=args.dry_run)
-    herdr_agent_start(config, name, ids["pane_id"], recipe, dry_run=args.dry_run)
-    herdr_agent_prompt(config, name, prompt_file, dry_run=args.dry_run)
+    if args.dry_run:
+        validate_dispatch_phase(stream, role)
+        ids = herdr_tab_create(config, stream["checkout"], label, dry_run=True)
+        herdr_recipe_pre_start(
+            config, name, ids["pane_id"], recipe, dry_run=True
+        )
+        herdr_agent_start(config, name, ids["pane_id"], recipe, dry_run=True)
+        herdr_agent_prompt(config, name, prompt_file, dry_run=True)
+        print(name)
+        return 0
 
-    stream.setdefault("agents", {})[role] = {
+    for occupied_role, current in stream.get("agents", {}).items():
+        if current and current.get("dispatchState") not in {"closed", "resolved"}:
+            raise FleetError(
+                f"live, uncaptured, or unclosed {occupied_role} dispatch "
+                f"{current.get('name', '?')} is "
+                f"{current.get('dispatchState') or 'legacy-active'}; reconcile "
+                "it before starting another"
+            )
+    validate_dispatch_phase(stream, role)
+
+    record = {
         "name": name,
         "role": role,
-        "tabId": ids["tab_id"],
-        "paneId": ids["pane_id"],
+        "dispatchNumber": dispatch_number,
+        "requestedRecipe": requested_recipe,
+        "recipe": recipe_key,
         "promptFile": str(prompt_file),
-        "dispatchedAt": utc_now_iso(),
+        "reservedAt": utc_now_iso(),
+        "dispatchState": "reserved",
     }
+    stream.setdefault("dispatchCounters", {})[role] = dispatch_number
+    stream.setdefault("agents", {})[role] = record
+    save_config(config_path, config)
+
+    ids = herdr_tab_create(config, stream["checkout"], label, dry_run=args.dry_run)
+    record.update(
+        {
+            "tabId": ids["tab_id"],
+            "paneId": ids["pane_id"],
+            "dispatchState": "tab-created",
+        }
+    )
+    save_config(config_path, config)
+    if herdr_recipe_pre_start(config, name, ids["pane_id"], recipe):
+        record["envPreparedAt"] = utc_now_iso()
+        save_config(config_path, config)
+    herdr_agent_start(config, name, ids["pane_id"], recipe, dry_run=args.dry_run)
+    record["dispatchState"] = "started"
+    save_config(config_path, config)
+
+    # Persist the prompt attempt before crossing the external side-effect
+    # boundary. If this process dies after Herdr accepts the prompt but before
+    # the final save, the settle monitor must still regard the lane as owned
+    # and capture its eventual result. A failed attempt may therefore surface
+    # as a malformed capture, but it can no longer disappear silently.
+    record["dispatchState"] = "prompting"
+    record["promptAttemptedAt"] = utc_now_iso()
     if role == "impl":
         stream["phase"] = "implementing"
     else:
         stream["phase"] = f"review-{review_pass(stream)}"
-    save_config(config_path, config, dry_run=args.dry_run)
+    stream.pop("resumePhase", None)
+    stream.pop("holdReason", None)
+    save_config(config_path, config)
+    try:
+        herdr_agent_prompt(config, name, prompt_file, dry_run=args.dry_run)
+    except FleetError:
+        if recipe.get("kind") != "codex" or not codex_restart_required(
+            config, name, record["paneId"]
+        ):
+            raise
+
+        # Codex's self-updater exits the just-started TUI and requires a new
+        # process. Replace the disposable tab once, retaining the same logical
+        # dispatch record and agent name so ownership stays durable.
+        record["codexRestartAttemptedAt"] = utc_now_iso()
+        save_config(config_path, config)
+        herdr_tab_close(config, record["tabId"])
+        ids = herdr_tab_create(config, stream["checkout"], label)
+        record.update(
+            {
+                "tabId": ids["tab_id"],
+                "paneId": ids["pane_id"],
+                "dispatchState": "prompting",
+            }
+        )
+        save_config(config_path, config)
+        if herdr_recipe_pre_start(config, name, ids["pane_id"], recipe):
+            record["envPreparedAt"] = utc_now_iso()
+            save_config(config_path, config)
+        herdr_agent_start(config, name, ids["pane_id"], recipe)
+        record["codexRestartedAt"] = utc_now_iso()
+        save_config(config_path, config)
+        herdr_agent_prompt(config, name, prompt_file)
+
+    record["dispatchState"] = "active"
+    record["dispatchedAt"] = utc_now_iso()
+    save_config(config_path, config)
     print(name)
     return 0
 
@@ -1200,7 +2054,13 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fleet")
-    parser.add_argument("--config", help="Path to fleet.json (or set FLEET_CONFIG)")
+    parser.add_argument(
+        "--config",
+        help=(
+            "Path to fleet.json (then FLEET_CONFIG, FLEET_STATE_DIR/fleet.json, "
+            "or $FLEET_SEED/temp/fleet/fleet.json)"
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print commands, change nothing")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -1219,8 +2079,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_capture = sub.add_parser("capture", help="Capture agent output into stream state", parents=[common])
     p_capture.add_argument("agent_name")
+    p_capture.add_argument(
+        "--event-id",
+        help="Durable settle event ID; an already captured ID is a successful no-op",
+    )
+    p_capture.add_argument(
+        "--capture-file",
+        help="Retry this event from a previously saved transcript instead of Herdr",
+    )
     p_capture.add_argument("--close", action="store_true")
     p_capture.set_defaults(func=cmd_capture)
+
+    p_resolve = sub.add_parser(
+        "resolve-event",
+        help="Acknowledge irrecoverable output or teardown with a reason",
+        parents=[common],
+    )
+    p_resolve.add_argument("agent_name")
+    p_resolve.add_argument("--event-id", required=True)
+    p_resolve.add_argument(
+        "--capture-file",
+        help="Explicitly resolve this exact saved malformed transcript as invalid output",
+    )
+    p_resolve.add_argument("--reason", required=True)
+    p_resolve.set_defaults(func=cmd_resolve_event)
 
     p_state = sub.add_parser("state", help="Show stream state and next actions", parents=[common])
     p_state.set_defaults(func=cmd_state)
@@ -1247,10 +2129,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def mutates_config(args: argparse.Namespace) -> bool:
+    if getattr(args, "dry_run", False):
+        return False
+    if args.command in {"capture", "resolve-event", "dispatch", "land"}:
+        return True
+    return args.command == "verdict" and bool(args.commit)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if mutates_config(args):
+            with config_lock(config_path_from_args(args)):
+                return args.func(args)
         return args.func(args)
     except FleetError as exc:
         print(str(exc), file=sys.stderr)

@@ -1,9 +1,19 @@
 # Fleet config (`fleet.json`)
 
 One machine-readable file per project owns every binding and all live ticket
-state. The skill never hardcodes what this file owns. Verified live values
-(current seed tip, agent status) always come from git and Herdr, not from
-this file.
+state. Its default path is `<seed>/temp/fleet/fleet.json`, under a gitignored
+`temp/` directory. The skill never hardcodes what this file owns. Verified
+live values (current seed tip, agent status) always come from git and Herdr,
+not from this file.
+
+The CLI resolves the file in this order: `--config`, `FLEET_CONFIG`,
+`$FLEET_STATE_DIR/fleet.json`, then
+`$FLEET_SEED/temp/fleet/fleet.json`. The fallbacks are lookup only; they do not
+create a fleet config. Mutating commands hold an exclusive lock at
+`<fleet.json>.lock` while reading and writing it.
+
+Capture tails go to `FLEET_CAPTURES_DIR` when set, otherwise to `captures/`
+beside the resolved config. Each file is written atomically before parsing.
 
 ## Schema
 
@@ -18,14 +28,94 @@ this file.
   // Recipes are keyed by MODEL TIER, one entry per backend+effort — never
   // per instance. A recipe can launch any number of concurrent agents;
   // uniqueness lives in the agent NAME chosen at dispatch, derived from the
-  // ticket and role: T094.1 implementer -> t094-1-impl, its reviewer ->
-  // t094-1-review (Herdr names: [a-z][a-z0-9_-]{0,31}, no dots). Ticket-
-  // scoped names also make transcripts self-describing.
+  // ticket, a stable ticket hash, role, and persistent per-role dispatch
+  // counter: T094.1's first implementer -> t094-1-<hash>-impl-1. The hash
+  // prevents normalized or truncated ticket IDs from colliding. Herdr names
+  // match [a-z][a-z0-9_-]{0,31}; no dots.
+  // A usage pool represents one real quota/credit window. Set its state to
+  // "spent" only after conclusive hard-cap evidence. Recipes sharing a pool
+  // become unavailable together.
+  "usagePools": {
+    "cursor-composer": { "state": "available" },
+    "cursor-grok": { "state": "available" },
+    "grok-native": { "state": "available" },
+    "glm": { "state": "available" },
+    "anthropic-opus": { "state": "available" },
+    "openai-sol": { "state": "available" }
+  },
+
   "recipes": {
-    "composer-2.5": { "kind": "cursor", "args": ["--model", "composer-2.5", "-f"] },
-    "grok-xhigh":   { "kind": "grok",   "args": ["--model", "grok-4.6", "--reasoning-effort", "xhigh", "--always-approve"] },
-    "opus-max":     { "kind": "claude", "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "max"] },
-    "sol-max":      { "kind": "codex",  "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=max"] }
+    "composer-2.5": {
+      "kind": "cursor", "enabled": true, "usagePool": "cursor-composer",
+      "fallbacks": ["glm-53", "grok-high"],
+      "args": ["--model", "composer-2.5", "-f"]
+    },
+    "grok-xhigh": {
+      "kind": "grok", "enabled": true, "usagePool": "grok-native",
+      "fallbacks": ["grok-xhigh-cursor", "glm-53"],
+      "args": ["--model", "grok-4.6", "--reasoning-effort", "xhigh", "--always-approve"]
+    },
+    "grok-high": {
+      "kind": "grok", "enabled": true, "usagePool": "grok-native",
+      "fallbacks": ["glm-53", "grok-high-cursor"],
+      "args": ["--model", "grok-4.6", "--reasoning-effort", "high", "--always-approve"]
+    },
+    "grok-xhigh-cursor": {
+      "kind": "cursor", "enabled": true, "usagePool": "cursor-grok",
+      "fallbacks": [],
+      "args": ["--model", "cursor-grok-4.6-xhigh", "-f"]
+    },
+    "grok-high-cursor": {
+      "kind": "cursor", "enabled": true, "usagePool": "cursor-grok",
+      "fallbacks": ["grok-high", "glm-53"],
+      "args": ["--model", "cursor-grok-4.6-high", "-f"]
+    },
+    "glm-53": {
+      "kind": "claude", "enabled": true, "usagePool": "glm",
+      "fallbacks": ["grok-high", "grok-high-cursor"],
+      "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
+      "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
+    },
+    "opus-max": {
+      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-max"],
+      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "max"]
+    },
+    "sol-max": {
+      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
+      "fallbacks": ["opus-max"],
+      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=max"]
+    },
+    "opus-xhigh": {
+      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-xhigh"],
+      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "xhigh"]
+    },
+    "sol-xhigh": {
+      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
+      "fallbacks": ["opus-xhigh"],
+      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=xhigh"]
+    },
+    "opus-high": {
+      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
+      "fallbacks": [],
+      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "high"]
+    },
+    "sol-high": {
+      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
+      "fallbacks": [],
+      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=high"]
+    },
+    "opus-medium": {
+      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-medium"],
+      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "medium"]
+    },
+    "sol-medium": {
+      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
+      "fallbacks": ["opus-medium"],
+      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium"]
+    }
   },
 
   "implementerLadder": ["composer-2.5", "grok-high", "grok-xhigh"],
@@ -54,6 +144,7 @@ this file.
       "reviewRecipe": "opus-max",
       "phase": "implementing | review-N | bounce-N | verdict-pending | approved | landed | hold",
       "bounceCount": 0,
+      "dispatchCounters": { "impl": 1, "review": 2 },
       "baseTip": "seed tip the branch is based on",
       "tip": "current branch tip",
       "preFixTip": "branch tip before bounce fix commits (re-review range base)",
@@ -73,19 +164,131 @@ this file.
       "landRange": "baseTip..landTip recorded at land",
       "agents": {
         "impl": {
-          "name": "t094-1-impl",
+          "name": "t094-1-<hash>-impl-1",
           "role": "impl",
+          "dispatchNumber": 1,
+          "requestedRecipe": "grok-xhigh",
+          "recipe": "grok-xhigh-cursor",
+          "dispatchState": "reserved | tab-created | started | prompting | active | captured | closed | resolved",
           "tabId": "herdr tab id",
           "paneId": "herdr pane id",
-          "promptFile": "/path/to/prompt.txt",
+          "promptFile": "/abs/path/to/seed-repo/temp/fleet/prompts/t094-1-impl.txt",
+          "reservedAt": "ISO-8601",
+          "envPreparedAt": "ISO-8601 when envPreStep completed",
+          "promptAttemptedAt": "ISO-8601",
           "dispatchedAt": "ISO-8601"
         }
       },
-      "events": [{ "at": "ISO-8601", "agent": "t094-1-impl", "kind": "review-ready", "tip": "…" }]
+      "events": [{ "at": "ISO-8601", "eventId": "t094-1-<hash>-impl-1@7", "agent": "t094-1-<hash>-impl-1", "kind": "review-ready", "tip": "…", "capturePath": "/abs/path/to/seed-repo/temp/fleet/captures/…", "closedAt": "ISO-8601" }]
     }
   ]
 }
 ```
+
+## Recipe availability and fallback policy
+
+| Requested recipe | Ordered route before operator alert |
+|---|---|
+| `grok-xhigh` | `grok-xhigh-cursor`, `glm-53` |
+| `grok-high` | `glm-53`, `grok-high-cursor` |
+| `glm-53` | `grok-high`, `grok-high-cursor` |
+| `grok-high-cursor` | `grok-high`, `glm-53` |
+| `opus-max` / `sol-max` | the other recipe |
+| `opus-xhigh` / `sol-xhigh` | the other recipe |
+| `opus-medium` / `sol-medium` | the other recipe |
+| `composer-2.5` | `glm-53`, `grok-high` |
+
+- `enabled: false` removes one recipe from both primary and fallback
+  selection without deleting how to launch it. Set it back to `true` to
+  re-enable it.
+- `usagePools.<name>.state: spent` removes every recipe charged to that
+  quota window. Restore `available` only when that real window or credit pool
+  is usable again.
+- A coordinator marks a pool `spent` only when the captured output
+  conclusively says the usage window or credits are exhausted. Reset offers,
+  remaining-usage notices, authentication failures, startup failures,
+  timeouts, and ambiguous errors do not prove exhaustion; retain the evidence
+  and raise an operator alert.
+- On conclusive exhaustion, preserve the transcript before teardown, close
+  and reconcile the exact failed lane, mark the pool spent, then dispatch a
+  fresh lane with the first enabled, available entry in the requested
+  recipe's ordered `fallbacks` list.
+- Fallback lists are deliberately flat and non-recursive. Each primary lists
+  its complete allowed route, which prevents reciprocal Opus/Sol policies
+  from looping.
+- If no listed candidate is enabled and available, dispatch stops with an
+  operator alert. `sol-high`, `opus-high`, and directly requested
+  `grok-xhigh-cursor` have no invented fallback, because none was specified.
+- Availability edits affect future dispatches only. They never kill or
+  silently replace an active lane. Each lane records both `requestedRecipe`
+  and the recipe actually selected.
+- `envPreStep` is trusted project configuration run in the new pane before
+  agent startup. GLM 5.3 uses it to load the lane-specific environment; a
+  failure stops dispatch rather than falling through as if quota were spent.
+
+`dispatchCounters` is per stream and per role. Missing counters start at zero,
+so existing configs migrate lazily. A real dispatch reserves the new number
+and agent record before creating a tab, then records each external boundary:
+`tab-created`, `started`, `prompting`, and `active`. `promptAttemptedAt` is
+written before prompt submission. This lets recovery distinguish an unused
+reservation from a prompt that may have been accepted. A dry run calculates
+the next name without changing the config. The dispatch number identifies a
+Herdr lane and is independent of the `review-N` pass number.
+
+Capture adds `capturedAt`, `captureKind`, and, when supplied,
+`captureEventId`. Teardown adds `closedAt`. Exceptional lost-output resolution
+adds `resolvedAt` and `resolutionReason`. These timestamps and the current
+`dispatchState` form the lane's recovery trail. `captured` still owns an open
+tab; no next dispatch on the ticket is allowed until every recorded lane is
+`closed` or `resolved`.
+
+Keep rendered prompt files beside the other ignored runtime state, under
+`<seed>/temp/fleet/prompts/`, unless the project explicitly chooses another
+ignored path.
+
+A parse failure adds `lastCaptureFailure` with its timestamp, event ID, error,
+and saved capture path, but no acknowledgement event. The raised error names
+that path. A later successful capture clears the failure record.
+
+When a monitor supplies an event ID, treat it as an opaque idempotency key and
+persist it on the same `events[]` entry as the captured result. That atomic
+write is durable processing proof; the monitor sweeps only after the exact
+event carries `closedAt` or `teardownResolvedAt`, its exact correlated agent
+record is `closed` or `resolved`, or it is a `resolved-lost-output` event. New
+closes copy `closedAt` onto both the record and event so later role-slot reuse
+cannot erase the proof. Retrying a captured event ID returns success without
+rereading Herdr or adding another verdict; adding `--close` resumes and
+finishes teardown, and dispatch remains blocked until it does.
+Herdr's already-missing-tab result is idempotent success. A reused ID that
+names a different agent, or any ID recorded more than once across streams, is
+invalid. The transcript tail is saved under the captures directory before
+parsing, so malformed output remains available even when no event can be
+recorded. Retry that exact event with `--capture-file <saved-transcript>` when
+the live agent and pane no longer retain the output; this explicit recovery
+path requires `--event-id` and records the original evidence path.
+
+Only after both agent and pane reads fail, `fleet resolve-event` records a
+`resolved-lost-output` event with the exact event ID, agent, timestamp, and
+operator-supplied reason. If a saved capture exists but is unusable evidence
+(for example, an authentication failure with no verdict), pass its exact path
+as `--capture-file`; this records `resolved-invalid-output` with the parse
+error, evidence path, and reason. Omitting the path or supplying a different
+file remains an error. Both forms let the monitor sweep the event without
+pretending a capture or verdict exists, move the stream to `hold`, preserve an
+existing recoverable `resumePhase`, and record `holdReason`; re-dispatching the
+lost or invalid role restores the right phase.
+
+If the exact capture event already exists but its tab identity or close cannot
+be recovered, the same command instead records `teardownResolvedAt` and
+`teardownResolutionReason` on that event. It marks only an exactly correlated
+current record `resolved` and leaves the already-captured workflow phase
+unchanged. This is durable closure proof without claiming the tab was closed.
+Repeating either resolution is idempotent; assigning an ID to another agent or
+duplicating an ID across streams fails.
+
+The operator must establish that both reads failed before running
+`resolve-event`; the command records the supplied resolution but does not
+probe Herdr itself.
 
 ## Migration from an instance-keyed recipes table
 

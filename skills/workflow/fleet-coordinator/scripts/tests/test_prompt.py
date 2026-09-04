@@ -115,6 +115,11 @@ class PromptRenderTests(unittest.TestCase):
         self.assertNotIn("<", text)
 
     def test_review_prompt_renders_range(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "review-1"
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        expected_range = f"{stream['baseTip']}..{stream['tip']}"
         out = Path(self.tmp.name) / "review.txt"
         result = run_fleet(
             "--config",
@@ -127,9 +132,125 @@ class PromptRenderTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         text = out.read_text()
-        self.assertIn("Review range:", text)
-        self.assertIn("First pass:", text)
+        self.assertIn(f"Review range: {expected_range}", text)
+        self.assertIn(f"First pass: {expected_range}", text)
         self.assertNotIn("{{", text)
+
+    def test_first_review_range_stays_at_recorded_base_when_seed_moves(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "review-1"
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        expected_range = f"{stream['baseTip']}..{stream['tip']}"
+
+        (self.seed / "later.txt").write_text("later\n")
+        subprocess.run(["git", "add", "later.txt"], cwd=self.seed, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "advance seed"],
+            cwd=self.seed,
+            check=True,
+            capture_output=True,
+        )
+        moved_seed_tip = subprocess.run(
+            ["git", "-C", str(self.seed), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        out = Path(self.tmp.name) / "review.txt"
+        result = run_fleet(
+            "--config",
+            str(self.config_path),
+            "prompt",
+            "T094.1",
+            "review",
+            "--out",
+            str(out),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = out.read_text()
+        self.assertIn(f"Review range: {expected_range}", text)
+        self.assertIn(f"First pass: {expected_range}", text)
+        self.assertNotIn(f"{moved_seed_tip}..{stream['tip']}", text)
+
+    def test_second_review_uses_exact_pre_fix_range(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        pre_fix_tip = stream["tip"]
+        (self.clone / "fix.txt").write_text("fix\n")
+        subprocess.run(["git", "add", "fix.txt"], cwd=self.clone, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fix review finding"],
+            cwd=self.clone,
+            check=True,
+            capture_output=True,
+        )
+        new_tip = subprocess.run(
+            ["git", "-C", str(self.clone), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        stream.update(
+            {
+                "phase": "review-2",
+                "tip": new_tip,
+                "preFixTip": pre_fix_tip,
+                "reviewRange": "stale..range",
+                "verdicts": [
+                    {"pass": 1, "tip": pre_fix_tip, "approve": False, "findings": []}
+                ],
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        expected_range = f"{pre_fix_tip}..{new_tip}"
+
+        out = Path(self.tmp.name) / "review-2.txt"
+        result = run_fleet(
+            "--config",
+            str(self.config_path),
+            "prompt",
+            "T094.1",
+            "review",
+            "--out",
+            str(out),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = out.read_text()
+        self.assertIn(f"Review range: {expected_range}", text)
+        self.assertIn(f"Re-review: {expected_range}", text)
+        self.assertNotIn("stale..range", text)
+
+    def test_second_review_without_pre_fix_tip_fails(self) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream.update(
+            {
+                "phase": "review-2",
+                "verdicts": [
+                    {"pass": 1, "tip": stream["tip"], "approve": False, "findings": []}
+                ],
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        out = Path(self.tmp.name) / "bad-review.txt"
+
+        result = run_fleet(
+            "--config",
+            str(self.config_path),
+            "prompt",
+            "T094.1",
+            "review",
+            "--out",
+            str(out),
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("review-2 missing preFixTip", result.stderr)
+        self.assertFalse(out.exists())
 
     def test_bounce_prompt_renders_findings(self) -> None:
         config = json.loads(self.config_path.read_text())

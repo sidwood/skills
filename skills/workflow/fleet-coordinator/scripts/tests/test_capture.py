@@ -38,6 +38,25 @@ class ParseCaptureTests(unittest.TestCase):
         text = "End with exactly one of:\nAPPROVE: yes\nAPPROVE: no\n"
         self.assertIsNone(fleet.parse_approve_verdict(text))
 
+    def test_parse_indented_claude_verdict_before_prompt_footer(self) -> None:
+        text = (
+            "  Findings:\n\n"
+            "  None.\n\n"
+            "  APPROVE: yes\n\n"
+            "✻ Worked for 25s\n"
+            "────────────────────────\n"
+            "❯ create a pr\n"
+        )
+        self.assertTrue(fleet.parse_approve_verdict(text))
+
+    def test_indented_echoed_template_is_not_a_verdict(self) -> None:
+        text = (
+            "End with exactly one of:\n"
+            "  APPROVE: yes\n"
+            "  APPROVE: no\n"
+        )
+        self.assertIsNone(fleet.parse_approve_verdict(text))
+
     def test_review_ready_tip_formats(self) -> None:
         sha = "abc1234567890"
         checkout = Path("/tmp/unused")
@@ -58,6 +77,20 @@ class ParseCaptureTests(unittest.TestCase):
                     captured = fleet.parse_capture(text, "impl", checkout)
                 self.assertEqual(captured.kind, "review-ready")
                 self.assertEqual(captured.tip, sha)
+
+    def test_review_ready_uses_codex_final_block_after_echoed_instruction(self) -> None:
+        sha = "abc1234567890"
+        text = (
+            "Output REVIEW-READY with: tip SHA, gate table, deferral notes.\n"
+            "\n"
+            "• REVIEW-READY\n"
+            "\n"
+            f"  - Tip SHA: {sha}\n"
+            "  - python3 -m unittest: passed\n"
+        )
+        with mock.patch.object(fleet, "verify_tip_in_checkout", return_value=sha):
+            captured = fleet.parse_capture(text, "impl", Path("/tmp/unused"))
+        self.assertEqual(captured.tip, sha)
 
     def test_review_ready_tip_ignores_pre_fix_label(self) -> None:
         pre = "aaaaaaa"
@@ -100,6 +133,20 @@ class ParseCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(fleet.FleetError, "missing tip SHA"):
             fleet.parse_capture(text, "impl", Path("/tmp/unused"))
 
+    def test_reviewer_ignores_review_ready_text_and_requires_approve(self) -> None:
+        text = "Prior implementer said REVIEW-READY\ntip: abc1234\nAPPROVE: yes\n"
+        captured = fleet.parse_capture(text, "review")
+        self.assertEqual(captured.kind, "verdict")
+        self.assertTrue(captured.approve)
+
+    def test_implementer_rejects_approve_instead_of_review_ready(self) -> None:
+        with self.assertRaisesRegex(fleet.FleetError, "missing REVIEW-READY"):
+            fleet.parse_capture("APPROVE: yes\n", "impl")
+
+    def test_reviewer_rejects_review_ready_instead_of_approve(self) -> None:
+        with self.assertRaisesRegex(fleet.FleetError, "missing APPROVE"):
+            fleet.parse_capture("REVIEW-READY\ntip: abc1234\n", "review")
+
 
 class CaptureTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -119,6 +166,60 @@ class CaptureTests(unittest.TestCase):
             text=True,
             check=True,
         ).stdout.strip()
+        (self.checkout / "fix-1.txt").write_text("one\n")
+        subprocess.run(["git", "add", "fix-1.txt"], cwd=self.checkout, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fix one"],
+            cwd=self.checkout,
+            check=True,
+            capture_output=True,
+        )
+        self.fix_one_tip = subprocess.run(
+            ["git", "-C", str(self.checkout), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        (self.checkout / "fix-2.txt").write_text("two\n")
+        subprocess.run(["git", "add", "fix-2.txt"], cwd=self.checkout, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fix two"],
+            cwd=self.checkout,
+            check=True,
+            capture_output=True,
+        )
+        self.fix_two_tip = subprocess.run(
+            ["git", "-C", str(self.checkout), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "checkout", "-b", "divergent", self.branch_tip],
+            cwd=self.checkout,
+            check=True,
+            capture_output=True,
+        )
+        (self.checkout / "divergent.txt").write_text("divergent\n")
+        subprocess.run(["git", "add", "divergent.txt"], cwd=self.checkout, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "divergent fix"],
+            cwd=self.checkout,
+            check=True,
+            capture_output=True,
+        )
+        self.divergent_tip = subprocess.run(
+            ["git", "-C", str(self.checkout), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "checkout", "main"],
+            cwd=self.checkout,
+            check=True,
+            capture_output=True,
+        )
 
         self.config_path = Path(self.tmp.name) / "fleet.json"
         with open(FIXTURES / "fleet.json") as fh:
@@ -143,6 +244,11 @@ class CaptureTests(unittest.TestCase):
     def args(self, *extra: str) -> fleet.argparse.Namespace:
         return fleet.build_parser().parse_args(["--config", str(self.config_path), "capture", *extra])
 
+    def update_stream(self, **updates: object) -> None:
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0].update(updates)
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
     @mock.patch("subprocess.run")
     def test_capture_review_ready_records_tip(self, mock_run: mock.Mock) -> None:
         transcript = f"Done.\nREVIEW-READY\ntip: {self.branch_tip}\n"
@@ -153,10 +259,540 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         stream = json.loads(self.config_path.read_text())["streams"][0]
         self.assertEqual(stream["tip"], self.branch_tip)
-        self.assertTrue(stream["phase"].startswith("review-"))
+        self.assertEqual(stream["phase"], "review-1")
+        self.assertEqual(
+            stream["reviewRange"], f"{stream['baseTip']}..{self.branch_tip}"
+        )
+
+    @mock.patch("subprocess.run")
+    def test_malformed_capture_records_transcript_without_acknowledging_event(
+        self, mock_run: mock.Mock
+    ) -> None:
+        transcript = "Agent stopped before writing its completion marker.\n"
+        event_id = "t094-1-impl@9"
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-impl": transcript},
+        ).side_effect
+
+        with self.assertRaisesRegex(fleet.FleetError, "transcript saved at"):
+            fleet.cmd_capture(
+                self.args("t094-1-impl", "--event-id", event_id)
+            )
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        failure = stream["agents"]["impl"]["lastCaptureFailure"]
+        self.assertEqual(failure["eventId"], event_id)
+        capture_path = Path(failure["capturePath"])
+        self.assertTrue(capture_path.is_file())
+        self.assertEqual(capture_path.read_text(), transcript)
+        self.assertFalse(
+            any(event.get("eventId") == event_id for event in stream.get("events", []))
+        )
+
+    @mock.patch("fleet.herdr_agent_read")
+    def test_capture_retries_a_saved_transcript_without_reading_herdr(
+        self, mock_agent_read: mock.Mock
+    ) -> None:
+        event_id = "t094-1-impl@9"
+        capture_file = Path(self.tmp.name) / "saved-capture.txt"
+        capture_file.write_text(
+            f"• REVIEW-READY\n\n  - Tip SHA: {self.branch_tip[:7]}\n"
+        )
+
+        rc = fleet.cmd_capture(
+            self.args(
+                "t094-1-impl",
+                "--event-id",
+                event_id,
+                "--capture-file",
+                str(capture_file),
+            )
+        )
+
+        self.assertEqual(rc, 0)
+        mock_agent_read.assert_not_called()
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["events"][-1]["eventId"], event_id)
+        self.assertEqual(
+            stream["events"][-1]["capturePath"], str(capture_file.resolve())
+        )
+
+    def test_capture_file_requires_an_event_id(self) -> None:
+        capture_file = Path(self.tmp.name) / "saved-capture.txt"
+        capture_file.write_text("REVIEW-READY\nTip SHA: abc1234\n")
+        with self.assertRaisesRegex(fleet.FleetError, "requires --event-id"):
+            fleet.cmd_capture(
+                self.args(
+                    "t094-1-impl", "--capture-file", str(capture_file)
+                )
+            )
+
+    @mock.patch("subprocess.run")
+    def test_capture_persists_event_id(self, mock_run: mock.Mock) -> None:
+        event_id = "t094-1-review@7"
+        self.update_stream(phase="review-1")
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-review": ECHOED_REVIEW_TAIL},
+        ).side_effect
+
+        rc = fleet.cmd_capture(
+            self.args("t094-1-review", "--event-id", event_id)
+        )
+
+        self.assertEqual(rc, 0)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["events"][-1]["eventId"], event_id)
+        self.assertEqual(stream["events"][-1]["agent"], "t094-1-review")
+        capture_path = Path(stream["events"][-1]["capturePath"])
+        self.assertTrue(capture_path.is_file())
+        self.assertEqual(capture_path.read_text(), ECHOED_REVIEW_TAIL)
+
+    @mock.patch("subprocess.run")
+    def test_duplicate_event_id_resumes_close_without_duplicate_capture(
+        self, mock_run: mock.Mock
+    ) -> None:
+        event_id = "t094-1-review@7"
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-review",
+                "kind": "verdict",
+                "approve": False,
+                "eventId": event_id,
+            }
+        ]
+        stream["agents"]["review"].update(
+            {
+                "dispatchState": "captured",
+                "capturedAt": "2026-09-04T00:00:00+00:00",
+                "captureEventId": event_id,
+            }
+        )
+        stream["verdicts"] = [
+            {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+        ]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        mock_run.side_effect = make_herdr_run_handler().side_effect
+
+        rc = fleet.cmd_capture(
+            self.args("t094-1-review", "--event-id", event_id, "--close")
+        )
+
+        self.assertEqual(rc, 0)
+        reads = [
+            call
+            for call in mock_run.call_args_list
+            if match_herdr(call.args[0], "agent", "read")
+        ]
+        closes = [
+            call
+            for call in mock_run.call_args_list
+            if match_herdr(call.args[0], "tab", "close")
+        ]
+        self.assertEqual(reads, [])
+        self.assertEqual(len(closes), 1)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(len(stream["events"]), 1)
+        self.assertEqual(len(stream["verdicts"]), 1)
+        self.assertEqual(stream["agents"]["review"]["dispatchState"], "closed")
+        self.assertEqual(
+            stream["events"][0]["closedAt"],
+            stream["agents"]["review"]["closedAt"],
+        )
+
+    @mock.patch("subprocess.run")
+    def test_close_retry_accepts_already_absent_tab(self, mock_run: mock.Mock) -> None:
+        event_id = "t094-1-review@7"
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-review",
+                "kind": "verdict",
+                "approve": False,
+                "eventId": event_id,
+            }
+        ]
+        stream["agents"]["review"].update(
+            {
+                "dispatchState": "captured",
+                "capturedAt": "2026-09-04T00:00:00+00:00",
+                "captureEventId": event_id,
+            }
+        )
+        stream["verdicts"] = [
+            {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+        ]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        def close_not_found(cmd: list[str], **_kwargs: object):
+            self.assertTrue(match_herdr(cmd, "tab", "close"))
+            return subprocess.CompletedProcess(
+                cmd,
+                1,
+                "",
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "tab_not_found",
+                            "message": "tab target not found",
+                        }
+                    }
+                ),
+            )
+
+        mock_run.side_effect = close_not_found
+
+        rc = fleet.cmd_capture(
+            self.args("t094-1-review", "--event-id", event_id, "--close")
+        )
+
+        self.assertEqual(rc, 0)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["agents"]["review"]["dispatchState"], "closed")
+        self.assertIn("closedAt", stream["events"][0])
+
+    @mock.patch("subprocess.run")
+    def test_existing_event_refuses_to_close_reused_agent_name(
+        self, mock_run: mock.Mock
+    ) -> None:
+        event_id = "t094-1-review@7"
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-review",
+                "kind": "verdict",
+                "approve": False,
+                "eventId": event_id,
+            }
+        ]
+        stream["agents"]["review"].update(
+            {
+                "dispatchState": "active",
+                "dispatchedAt": "2026-09-04T01:00:00+00:00",
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "different dispatch"):
+            fleet.cmd_capture(
+                self.args("t094-1-review", "--event-id", event_id, "--close")
+            )
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_duplicate_event_id_across_streams_is_rejected(
+        self, mock_run: mock.Mock
+    ) -> None:
+        event_id = "shared-review@7"
+        config = json.loads(self.config_path.read_text())
+        first = config["streams"][0]
+        first["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-review",
+                "kind": "verdict",
+                "eventId": event_id,
+            }
+        ]
+        second = json.loads(json.dumps(first))
+        second["ticket"] = "T095.1"
+        second["events"][0]["agent"] = "other-review"
+        second["agents"] = {}
+        config["streams"].append(second)
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "recorded more than once"):
+            fleet.cmd_capture(
+                self.args("t094-1-review", "--event-id", event_id)
+            )
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_historical_same_name_capture_does_not_mask_current_dispatch(
+        self, mock_run: mock.Mock
+    ) -> None:
+        event_id = "t094-1-review@8"
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "review-1"
+        stream["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-review",
+                "kind": "verdict",
+                "approve": False,
+                "closedAt": "2026-09-04T00:01:00+00:00",
+            }
+        ]
+        stream["agents"]["review"].update(
+            {
+                "dispatchState": "active",
+                "dispatchedAt": "2026-09-04T01:00:00+00:00",
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-review": "APPROVE: yes\n"},
+        ).side_effect
+
+        self.assertEqual(
+            fleet.cmd_capture(
+                self.args("t094-1-review", "--event-id", event_id)
+            ),
+            0,
+        )
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(len(stream["events"]), 2)
+        self.assertNotIn("eventId", stream["events"][0])
+        self.assertEqual(stream["events"][1]["eventId"], event_id)
+
+    @mock.patch("subprocess.run")
+    def test_reused_event_id_for_another_agent_fails_before_read(
+        self, mock_run: mock.Mock
+    ) -> None:
+        event_id = "t094-1-review@7"
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0]["events"] = [
+            {
+                "at": "2026-09-04T00:00:00+00:00",
+                "agent": "t094-1-impl",
+                "kind": "review-ready",
+                "eventId": event_id,
+            }
+        ]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "already belongs"):
+            fleet.cmd_capture(
+                self.args("t094-1-review", "--event-id", event_id)
+            )
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_duplicate_agent_capture_is_no_op_without_event_id(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(phase="review-1")
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-review": "APPROVE: yes\n"},
+        ).side_effect
+
+        self.assertEqual(fleet.cmd_capture(self.args("t094-1-review")), 0)
+        self.assertEqual(fleet.cmd_capture(self.args("t094-1-review")), 0)
+
+        reads = [
+            call
+            for call in mock_run.call_args_list
+            if match_herdr(call.args[0], "agent", "read")
+        ]
+        self.assertEqual(len(reads), 1)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(len(stream["verdicts"]), 1)
+        self.assertEqual(len(stream["events"]), 1)
+
+    @mock.patch("subprocess.run")
+    def test_reviewer_verdict_pass_matches_active_review(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(
+            phase="review-3",
+            verdicts=[
+                {"pass": 1, "tip": self.branch_tip, "approve": False},
+                {"pass": 2, "tip": self.fix_one_tip, "approve": False},
+            ],
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-review": "APPROVE: yes\n"},
+        ).side_effect
+
+        self.assertEqual(fleet.cmd_capture(self.args("t094-1-review")), 0)
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["verdicts"][-1]["pass"], 3)
+        self.assertEqual(stream["events"][-1]["pass"], 3)
+
+    @mock.patch("subprocess.run")
+    def test_reviewer_capture_rejects_implementing_phase_before_read(
+        self, mock_run: mock.Mock
+    ) -> None:
+        with self.assertRaisesRegex(fleet.FleetError, "requires phase review-N"):
+            fleet.cmd_capture(self.args("t094-1-review"))
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_implementer_capture_rejects_review_phase_before_read(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(phase="review-1")
+
+        with self.assertRaisesRegex(fleet.FleetError, "requires phase implementing"):
+            fleet.cmd_capture(self.args("t094-1-impl"))
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_capture_rejects_role_that_disagrees_with_agent_slot(
+        self, mock_run: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0]["agents"]["review"]["role"] = "impl"
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "does not match slot"):
+            fleet.cmd_capture(self.args("t094-1-review"))
+
+        mock_run.assert_not_called()
+
+    @mock.patch("subprocess.run")
+    def test_second_implementation_capture_advances_to_review_two(
+        self, mock_run: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "implementing"
+        stream["verdicts"] = [
+            {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+        ]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        transcript = (
+            "Done.\nREVIEW-READY\n"
+            f"pre-fix tip: {self.branch_tip}\n"
+            f"new tip: {self.fix_one_tip}\n"
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-impl": transcript},
+        ).side_effect
+
+        rc = fleet.cmd_capture(self.args("t094-1-impl"))
+
+        self.assertEqual(rc, 0)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["phase"], "review-2")
+        self.assertEqual(stream["preFixTip"], self.branch_tip)
+        self.assertEqual(stream["tip"], self.fix_one_tip)
+        self.assertEqual(
+            stream["reviewRange"], f"{self.branch_tip}..{self.fix_one_tip}"
+        )
+
+    @mock.patch("subprocess.run")
+    def test_third_review_uses_latest_fix_range(self, mock_run: mock.Mock) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "implementing"
+        stream["verdicts"] = [
+            {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []},
+            {"pass": 2, "tip": self.fix_one_tip, "approve": False, "findings": []},
+        ]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        transcript = (
+            "Done.\nREVIEW-READY\n"
+            f"pre-fix tip: {self.fix_one_tip}\n"
+            f"new tip: {self.fix_two_tip}\n"
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-impl": transcript},
+        ).side_effect
+
+        rc = fleet.cmd_capture(self.args("t094-1-impl"))
+
+        self.assertEqual(rc, 0)
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["phase"], "review-3")
+        self.assertEqual(stream["preFixTip"], self.fix_one_tip)
+        self.assertEqual(stream["tip"], self.fix_two_tip)
+        self.assertEqual(
+            stream["reviewRange"], f"{self.fix_one_tip}..{self.fix_two_tip}"
+        )
+
+    @mock.patch("subprocess.run")
+    def test_bounced_review_ready_requires_pre_fix_tip(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(
+            phase="implementing",
+            verdicts=[
+                {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+            ],
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={
+                "t094-1-impl": f"Done.\nREVIEW-READY\nnew tip: {self.fix_one_tip}\n"
+            },
+        ).side_effect
+
+        with self.assertRaisesRegex(fleet.FleetError, "missing pre-fix tip"):
+            fleet.cmd_capture(self.args("t094-1-impl"))
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertNotEqual(stream["tip"], self.fix_one_tip)
+        self.assertEqual(len(stream.get("events", [])), 0)
+        failure = stream["agents"]["impl"]["lastCaptureFailure"]
+        self.assertIn("missing pre-fix tip", failure["error"])
+        self.assertTrue(Path(failure["capturePath"]).is_file())
+
+    @mock.patch("subprocess.run")
+    def test_bounced_review_ready_rejects_non_ancestor_pre_fix_tip(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(
+            phase="implementing",
+            verdicts=[
+                {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+            ],
+        )
+        transcript = (
+            "Done.\nREVIEW-READY\n"
+            f"pre-fix tip: {self.divergent_tip}\n"
+            f"new tip: {self.fix_two_tip}\n"
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-impl": transcript},
+        ).side_effect
+
+        with self.assertRaisesRegex(fleet.FleetError, "not an ancestor"):
+            fleet.cmd_capture(self.args("t094-1-impl"))
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        failure = stream["agents"]["impl"]["lastCaptureFailure"]
+        self.assertIn("not an ancestor", failure["error"])
+        self.assertTrue(Path(failure["capturePath"]).is_file())
+
+    @mock.patch("subprocess.run")
+    def test_bounced_review_ready_rejects_empty_abbreviated_range(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(
+            phase="implementing",
+            verdicts=[
+                {"pass": 1, "tip": self.branch_tip, "approve": False, "findings": []}
+            ],
+        )
+        transcript = (
+            "Done.\nREVIEW-READY\n"
+            f"pre-fix tip: {self.fix_one_tip[:8]}\n"
+            f"new tip: {self.fix_one_tip}\n"
+        )
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={"t094-1-impl": transcript},
+        ).side_effect
+
+        with self.assertRaisesRegex(fleet.FleetError, "empty review range"):
+            fleet.cmd_capture(self.args("t094-1-impl"))
 
     @mock.patch("subprocess.run")
     def test_capture_approve_no_with_echoed_template(self, mock_run: mock.Mock) -> None:
+        self.update_stream(phase="review-1")
         mock_run.side_effect = make_herdr_run_handler(
             agent_read={"t094-1-review": ECHOED_REVIEW_TAIL},
         ).side_effect
@@ -167,6 +803,7 @@ class CaptureTests(unittest.TestCase):
 
     @mock.patch("subprocess.run")
     def test_capture_approve_no_with_findings(self, mock_run: mock.Mock) -> None:
+        self.update_stream(phase="review-1")
         mock_run.side_effect = make_herdr_run_handler(
             agent_read={"t094-1-review": "[P2] (A) src/foo.py:10: missing guard\nAPPROVE: no\n"},
         ).side_effect
@@ -178,6 +815,7 @@ class CaptureTests(unittest.TestCase):
 
     @mock.patch("subprocess.run")
     def test_capture_no_verdict_refuses_close(self, mock_run: mock.Mock) -> None:
+        self.update_stream(phase="review-1")
         mock_run.side_effect = make_herdr_run_handler(
             agent_read={"t094-1-review": "still working\n"},
         ).side_effect
@@ -185,9 +823,13 @@ class CaptureTests(unittest.TestCase):
             fleet.cmd_capture(self.args("t094-1-review", "--close"))
         close_calls = [c for c in mock_run.call_args_list if match_herdr(c.args[0], "tab", "close")]
         self.assertEqual(close_calls, [])
+        captures = list((self.config_path.parent / "captures").glob("*.txt"))
+        self.assertEqual(len(captures), 1)
+        self.assertEqual(captures[0].read_text(), "still working\n")
 
     @mock.patch("subprocess.run")
     def test_capture_pane_fallback_on_agent_not_found(self, mock_run: mock.Mock) -> None:
+        self.update_stream(phase="review-1")
         mock_run.side_effect = make_herdr_run_handler(
             agent_read={},
             pane_read={"pane-1": "APPROVE: yes\n"},
@@ -195,6 +837,28 @@ class CaptureTests(unittest.TestCase):
         rc = fleet.cmd_capture(self.args("t094-1-review"))
         self.assertEqual(rc, 0)
         pane_calls = [c for c in mock_run.call_args_list if match_herdr(c.args[0], "pane", "read")]
+        self.assertEqual(len(pane_calls), 1)
+
+    @mock.patch("subprocess.run")
+    def test_capture_pane_fallback_on_any_agent_read_failure(
+        self, mock_run: mock.Mock
+    ) -> None:
+        self.update_stream(phase="review-1")
+        mock_run.side_effect = make_herdr_run_handler(
+            agent_read={
+                "t094-1-review": '{"error":{"code":"server_busy"}}'
+            },
+            pane_read={"pane-1": "APPROVE: yes\n"},
+        ).side_effect
+
+        rc = fleet.cmd_capture(self.args("t094-1-review"))
+
+        self.assertEqual(rc, 0)
+        pane_calls = [
+            call
+            for call in mock_run.call_args_list
+            if match_herdr(call.args[0], "pane", "read")
+        ]
         self.assertEqual(len(pane_calls), 1)
 
 

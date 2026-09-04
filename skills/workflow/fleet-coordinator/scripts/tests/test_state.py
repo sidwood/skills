@@ -86,6 +86,73 @@ class StateTests(unittest.TestCase):
         self.assertIn("baseTip", err.getvalue())
         self.assertIn("missing-agent", err.getvalue())
 
+    @mock.patch("fleet.git_tip", return_value="a" * 40)
+    def test_terminal_dispatches_do_not_warn_when_absent(
+        self, _mock_git_tip: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+
+        for dispatch_state in ("closed", "resolved"):
+            with self.subTest(dispatch_state=dispatch_state):
+                stream["agents"] = {
+                    "impl": {
+                        "name": "finished-agent",
+                        "dispatchState": dispatch_state,
+                    }
+                }
+                self.assertEqual(fleet.drift_warnings(config, stream, []), [])
+
+    @mock.patch("fleet.git_tip", return_value="a" * 40)
+    def test_incomplete_startup_dispatches_warn_with_recovery_context(
+        self, _mock_git_tip: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        expected_hints = {
+            "reserved": "tab creation was not recorded; reconcile before retrying",
+            "tab-created": "agent start was not recorded; inspect the tab before retrying",
+            "started": "prompting was not recorded; inspect the agent before retrying",
+            "prompting": (
+                "prompt completion is unknown; inspect or capture the agent before retrying"
+            ),
+        }
+
+        for dispatch_state, hint in expected_hints.items():
+            with self.subTest(dispatch_state=dispatch_state):
+                stream["agents"] = {
+                    "impl": {
+                        "name": "incomplete-agent",
+                        "dispatchState": dispatch_state,
+                    }
+                }
+                self.assertEqual(
+                    fleet.drift_warnings(config, stream, []),
+                    [
+                        "T094.1: agent incomplete-agent (impl) startup incomplete "
+                        f"at {dispatch_state}; {hint}"
+                    ],
+                )
+
+    @mock.patch("fleet.git_tip", return_value="a" * 40)
+    def test_active_dispatch_missing_from_herdr_always_warns(
+        self, _mock_git_tip: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["phase"] = "verdict-pending"
+        stream["agents"] = {
+            "review": {
+                "name": "missing-reviewer",
+                "dispatchState": "active",
+            }
+        }
+
+        self.assertEqual(
+            fleet.drift_warnings(config, stream, []),
+            ["T094.1: agent missing-reviewer (review) not in herdr list"],
+        )
+
     def test_herdr_agent_list_parses_envelope(self) -> None:
         config = json.loads(self.config_path.read_text())
         with mock.patch("subprocess.run") as mock_run:

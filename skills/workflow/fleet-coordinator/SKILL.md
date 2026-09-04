@@ -1,27 +1,32 @@
 ---
 name: fleet-coordinator
-description: Use when coordinating a fleet of coding agents against a ticket board — dispatching implementers or reviewers in a Herdr session, handling REVIEW-READY or APPROVE verdicts, bouncing, or landing branch clones — or when the user asks to run the fleet, work the board, or hand the ticket loop to an orchestrator.
+description: Use when coordinating a fleet of coding agents against task state or an optional ticket board — dispatching implementers or reviewers in a Herdr session, handling REVIEW-READY or APPROVE verdicts, bouncing, or landing branch clones — or when the user asks to run the fleet, work the board, or hand the ticket loop to an orchestrator.
 ---
 
 # Fleet Coordinator
 
-Operate a ticket board as an event loop: every event maps to a table row,
-every project binding lives in config, every judgment call escalates to the
-user. An unmatched situation stops for escalation — inventing an action is the
-one unforgivable failure.
+Operate fleet state as an event loop: every event maps to a table row, every
+project binding lives in config, and every judgment call escalates to the
+user. `fleet.json` is the source of truth; a board is an optional projection,
+never a dependency. An unmatched situation stops for escalation — inventing
+an action is the one unforgivable failure.
 
 When an orchestrator supervises this loop (the `fleet-orchestrator` skill), it
 is the escalation address instead of the user: it rules on the verdicts you
-report, schedules the landing train, and owns pushes and monitors. Report
-every settle to it and land only in the slot it gives you.
+report, schedules the landing train, and owns pushes and monitors. Keep routine
+settles in durable fleet state; the monitor sends reviewer events straight to
+it, while you send escalations and execute a landing only in the slot it gives
+you.
 
 ## Configuration contract
 
-1. Locate the project's fleet config (`fleet.json`, or the path the project
-   instructions name). It owns every binding: seed repository path, Herdr
-   session name, agent recipes, reviewer pairing rules, verification gate
-   commands, deployment context, land policy, bounce cap, and per-ticket
-   stream state. To create or migrate one, read
+1. Locate the project's fleet config (by default
+   `<seed>/temp/fleet/fleet.json`, or the path project instructions name). It
+   owns every binding: seed repository path, Herdr
+   session name, agent recipes, recipe enable switches and usage-pool state,
+   reviewer pairing rules, verification gate commands, deployment context,
+   land policy, bounce cap, and per-ticket stream state. To create or migrate
+   one, read
    [references/fleet-config.md](references/fleet-config.md).
 2. Never hardcode a binding the config owns. Read the seed tip from git
    (`git -C <seed> log --oneline -1`), never from a file.
@@ -31,8 +36,16 @@ every settle to it and land only in the slot it gives you.
 
 ## Workflow
 
-1. Watch agent settles (monitor or poll). On each event, find its row below,
-   run it, and report under
+1. Watch agent settles (monitor or poll). Pass a monitor event ID unchanged to
+   `fleet capture --event-id --close`; the resulting `events[]` entry is
+   durable processing proof. Event `closedAt`, event `teardownResolvedAt`, a
+   `resolved-lost-output` event, or an exact correlated lane marked `closed` or
+   `resolved` completes the monitor acknowledgement. A retry of the same ID
+   succeeds without rereading the lane or recording the result twice, and
+   resumes teardown when needed. The next dispatch is blocked until every
+   earlier lane on the ticket is `closed` or `resolved`. On each new event,
+   find its row
+   below, run it, and report under
    [references/comms-contract.md](references/comms-contract.md) — plain
    five-year-old language, bullets, ⚠️ on every escalation and nothing else.
    No matching row: stop and escalate.
@@ -40,7 +53,12 @@ every settle to it and land only in the slot it gives you.
    teardown). Output contains REVIEW-READY with a tip SHA and gate table →
    record it, tear down, dispatch the assigned reviewer using the scoped
    review template. Anything else → escalate with the captured tail.
-3. **Reviewer settles** → CAPTURE, then apply the verdict table:
+3. **Reviewer settles** → when an orchestrator supervises the fleet, the
+   monitor routes the event ID directly to it; if you observe the event by
+   another path, forward that ID unchanged. Leave capture and the verdict
+   ruling to the orchestrator, then apply the ruling it returns. In a
+   standalone coordinator loop, CAPTURE and apply the same verdict table,
+   escalating judgment to the user:
    - APPROVE: yes with no in-scope P0–P2 findings → land (step 5).
    - APPROVE: no with an in-scope P0–P2 and bounce count below the cap →
      bounce: a fix-only prompt naming the findings; the next review verifies
@@ -59,7 +77,8 @@ every settle to it and land only in the slot it gives you.
    deferrals; unblock dependents. Keep the clone until origin has the
    commits, and never push — the user pushes.
 6. Record every state change (phase, tips, verdicts, bounce counts, reviewer
-   assignments) in the fleet config and on the board as it happens.
+   assignments) in the fleet config as it happens. When a board adapter is
+   configured, update that projection in the same turn.
 
 ## Review discipline
 
@@ -83,10 +102,30 @@ every settle to it and land only in the slot it gives you.
 ## Rules
 
 - CAPTURE before teardown, always: read the agent transcript, record the
-  verdict and findings, and only then close its tab. If the agent read fails,
-  read the pane; if that also fails, escalate — never close unread.
+  verdict and findings, and only then close its tab. `fleet capture` falls
+  back to the recorded pane after any agent-read failure. If the pane fallback
+  also fails after a prior malformed capture, retry the exact event from its
+  saved evidence with `--capture-file`. Use `resolve-event` only when output is
+  irretrievable; never invent output.
+- Treat monitor event IDs as opaque idempotency keys. Record the ID in the same
+  atomic config write as the captured result; the monitor sweeps only after
+  the exact event has `closedAt`, `teardownResolvedAt`, or kind
+  `resolved-lost-output`, or its exact correlated lane is `closed` or
+  `resolved`.
 - Fresh tab and agent per dispatch; never reuse a settled pane.
-- One writer per clone; agents never touch the seed working copy.
+- Resolve a dispatch recipe from its requested recipe plus that recipe's
+  ordered, flat fallback list. Skip any recipe with `enabled: false` or a
+  `spent` usage pool, record both requested and selected recipes on the lane,
+  and raise an operator alert when none remains.
+- Mark a usage pool `spent` only from conclusive captured evidence that its
+  window or credits are exhausted. A reset offer, usage reminder,
+  authentication problem, startup failure, timeout, or ambiguous message is
+  not exhaustion and must not trigger a fallback. Preserve the tail, reconcile
+  and close the exact failed lane, then start the next fallback in a fresh
+  lane. Availability changes never replace an active lane.
+- One writer per clone; dispatch refuses another role until every prior lane
+  on that ticket is `closed` or `resolved`. Agents never touch the seed working
+  copy.
 - Report in plain five-year-old language, in bullets; the first line is the
   event and the action taken, precision goes in the linked files, and ⚠️ marks
   every escalation and nothing else. The operator scans your pane for exactly
@@ -97,14 +136,17 @@ deregisters, read [references/herdr-cli.md](references/herdr-cli.md).
 
 ## Scripts
 
-Executable helpers live in `scripts/fleet.py`. Config path via `--config` or
-`FLEET_CONFIG`. Every mutating subcommand accepts `--dry-run`.
+Executable helpers live in `scripts/fleet.py`. Config precedence is
+`--config`, `FLEET_CONFIG`, `$FLEET_STATE_DIR/fleet.json`, then
+`$FLEET_SEED/temp/fleet/fleet.json`. Every mutating subcommand accepts
+`--dry-run`.
 
 | Workflow step | Command |
 |---------------|---------|
 | Render implementer / review / bounce prompt | `fleet prompt <ticket> <implementer\|review\|bounce> --out <file>` |
-| Capture agent output (before tab close) | `fleet capture <agent-name> [--close]` |
-| Board snapshot and next action | `fleet state` |
+| Capture agent output (before tab close) | `fleet capture <agent-name> [--event-id <lane@seq>] [--capture-file <saved-transcript>] [--close]` |
+| Acknowledge irretrievably lost output or teardown | `fleet resolve-event <agent-name> --event-id <lane@seq> --reason <text>` |
+| Fleet snapshot and next action | `fleet state` |
 | Apply verdict table to newest capture | `fleet verdict <ticket> [--commit]` |
 | Open tab, start agent, send prompt | `fleet dispatch <ticket> <impl\|review> --prompt-file <file>` |
 | Fast-forward seed from approved clone | `fleet land <ticket>` |
