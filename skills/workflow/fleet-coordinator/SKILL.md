@@ -28,9 +28,14 @@ you.
    land policy, bounce cap, and per-ticket stream state. To create or migrate
    one, read
    [references/fleet-config.md](references/fleet-config.md).
-2. Never hardcode a binding the config owns. Read the seed tip from git
+2. Run `fleet recipes sync` after creating or adopting the config, then run
+   `fleet recipes check`. The packaged catalog owns recipe kinds, launch
+   arguments, usage pools, and fallback order. Never hand-copy, trim, or
+   rewrite that catalog; keep an unused recipe present with `enabled: false`.
+   Dispatch is forbidden while `recipes check` reports `RECIPE-DRIFT`.
+3. Never hardcode a binding the config owns. Read the seed tip from git
    (`git -C <seed> log --oneline -1`), never from a file.
-3. Paste the config's `deploymentContext` block into every prompt you
+4. Paste the config's `deploymentContext` block into every prompt you
    dispatch. Severity is judged against that context, never against an
    imagined production load.
 
@@ -52,7 +57,10 @@ you.
 2. **Implementer settles** → CAPTURE (read the transcript before any
    teardown). Output contains REVIEW-READY with a tip SHA and gate table →
    record it, tear down, dispatch the assigned reviewer using the scoped
-   review template. Anything else → escalate with the captured tail.
+   review template. Conclusive hard-cap output → `fleet capture --event-id
+   --close` records the capacity event, spends the selected recipe's pool, and
+   dispatches the next configured fallback from the original requested
+   recipe. Anything else → escalate with the captured tail.
 3. **Reviewer settles** → when an orchestrator supervises the fleet, the
    monitor routes the event ID directly to it; if you observe the event by
    another path, forward that ID unchanged. Leave capture and the verdict
@@ -120,9 +128,11 @@ you.
 - Mark a usage pool `spent` only from conclusive captured evidence that its
   window or credits are exhausted. A reset offer, usage reminder,
   authentication problem, startup failure, timeout, or ambiguous message is
-  not exhaustion and must not trigger a fallback. Preserve the tail, reconcile
-  and close the exact failed lane, then start the next fallback in a fresh
-  lane. Availability changes never replace an active lane.
+  not exhaustion and must not trigger a fallback. Always pass `--event-id
+  --close` to capture: recognized hard-cap evidence performs the close, pool
+  transition, and fresh fallback dispatch as one durable recovery. Never send
+  capacity evidence through `resolve-event`; that command refuses it.
+  Availability changes never replace an active lane.
 - One writer per clone; dispatch refuses another role until every prior lane
   on that ticket is `closed` or `resolved`. Agents never touch the seed working
   copy.
@@ -146,6 +156,7 @@ Executable helpers live in `scripts/fleet.py`. Config precedence is
 | Render implementer / review / bounce prompt | `fleet prompt <ticket> <implementer\|review\|bounce> --out <file>` |
 | Capture agent output (before tab close) | `fleet capture <agent-name> [--event-id <lane@seq>] [--capture-file <saved-transcript>] [--close]` |
 | Acknowledge irretrievably lost output or teardown | `fleet resolve-event <agent-name> --event-id <lane@seq> --reason <text>` |
+| Install or verify all launch recipes and fallback routes | `fleet recipes sync`; `fleet recipes check` |
 | Fleet snapshot and next action | `fleet state` |
 | Apply verdict table to newest capture | `fleet verdict <ticket> [--commit]` |
 | Open tab, start agent, send prompt | `fleet dispatch <ticket> <impl\|review> --prompt-file <file>` |

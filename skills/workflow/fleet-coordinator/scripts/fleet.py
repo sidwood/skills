@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import fcntl
 import hashlib
 import json
@@ -22,12 +23,21 @@ from typing import Any
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_PATH = SKILL_DIR / "references" / "prompt-templates.md"
+RECIPE_CATALOG_PATH = SKILL_DIR / "assets" / "recipe-catalog.json"
 IN_SCOPE_TAG = "(A)"
 DEFERRED_TAG_DEFAULT = "(B)"
 STYLE_TAG = "(D)"
 SEVERITIES = ("P0", "P1", "P2", "P3")
 BLOCKING_SEVERITIES = ("P0", "P1", "P2")
 REQUIRED_CONFIG_KEYS = ("user", "deploymentContext")
+CATALOG_RECIPE_FIELDS = ("kind", "usagePool", "fallbacks", "args", "envPreStep")
+CAPACITY_EXHAUSTION_PATTERNS = (
+    re.compile(r"\byou hit your weekly limit\b", re.IGNORECASE),
+    re.compile(r"\bweekly limit left:\s*0%", re.IGNORECASE),
+    re.compile(r"\bno (?:usage )?credits? remain(?:ing)?\b", re.IGNORECASE),
+    re.compile(r"\busage credits? (?:are |is )?exhausted\b", re.IGNORECASE),
+    re.compile(r"\busage window (?:is )?(?:full|exhausted)\b", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,119 @@ def utc_now_iso() -> str:
 def load_config(path: Path) -> dict[str, Any]:
     with path.open() as fh:
         return json.load(fh)
+
+
+def load_recipe_catalog() -> dict[str, Any]:
+    try:
+        catalog = json.loads(RECIPE_CATALOG_PATH.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FleetError(f"cannot load recipe catalog at {RECIPE_CATALOG_PATH}: {exc}") from exc
+    if not isinstance(catalog.get("version"), int):
+        raise FleetError("recipe catalog version must be an integer")
+    if not isinstance(catalog.get("usagePools"), dict) or not isinstance(
+        catalog.get("recipes"), dict
+    ):
+        raise FleetError("recipe catalog must contain usagePools and recipes objects")
+    return catalog
+
+
+def recipe_catalog_drift(config: dict[str, Any]) -> list[str]:
+    catalog = load_recipe_catalog()
+    drift: list[str] = []
+    if config.get("recipeCatalogVersion") != catalog["version"]:
+        drift.append(
+            "recipeCatalogVersion="
+            f"{config.get('recipeCatalogVersion')!r} (expected {catalog['version']})"
+        )
+
+    pools = config.get("usagePools")
+    if not isinstance(pools, dict):
+        drift.append("usagePools is missing or is not an object")
+        pools = {}
+    for pool_key in catalog["usagePools"]:
+        pool = pools.get(pool_key)
+        if not isinstance(pool, dict):
+            drift.append(f"missing usage pool {pool_key}")
+            continue
+        if pool.get("state", "available") not in {"available", "spent"}:
+            drift.append(f"usage pool {pool_key} has invalid state {pool.get('state')!r}")
+
+    recipes = config.get("recipes")
+    if not isinstance(recipes, dict):
+        drift.append("recipes is missing or is not an object")
+        recipes = {}
+    for recipe_key, expected in catalog["recipes"].items():
+        actual = recipes.get(recipe_key)
+        if not isinstance(actual, dict):
+            drift.append(f"missing recipe {recipe_key}")
+            continue
+        if not isinstance(actual.get("enabled", True), bool):
+            drift.append(f"recipe {recipe_key} has a non-boolean enabled switch")
+        for field in CATALOG_RECIPE_FIELDS:
+            if actual.get(field) != expected.get(field):
+                drift.append(f"recipe {recipe_key} has drifted {field}")
+    return drift
+
+
+def require_recipe_catalog(config: dict[str, Any]) -> None:
+    drift = recipe_catalog_drift(config)
+    if drift:
+        raise FleetError(
+            "RECIPE-DRIFT: " + "; ".join(drift) + "; run fleet recipes sync"
+        )
+
+
+def sync_recipe_catalog(config: dict[str, Any]) -> list[str]:
+    catalog = load_recipe_catalog()
+    changes = recipe_catalog_drift(config)
+
+    pools = config.setdefault("usagePools", {})
+    if not isinstance(pools, dict):
+        pools = {}
+        config["usagePools"] = pools
+    for pool_key, default in catalog["usagePools"].items():
+        current = pools.get(pool_key)
+        if isinstance(current, dict):
+            state = current.get("state", "available")
+            if state not in {"available", "spent"}:
+                raise FleetError(
+                    f"cannot sync recipe catalog: usage pool {pool_key} "
+                    f"has invalid state {state!r}"
+                )
+            merged_pool = copy.deepcopy(default)
+            merged_pool.update(current)
+            pools[pool_key] = merged_pool
+        else:
+            pools[pool_key] = copy.deepcopy(default)
+
+    recipes = config.setdefault("recipes", {})
+    if not isinstance(recipes, dict):
+        recipes = {}
+        config["recipes"] = recipes
+    for recipe_key, canonical in catalog["recipes"].items():
+        current = recipes.get(recipe_key)
+        enabled = canonical.get("enabled", True)
+        if isinstance(current, dict):
+            enabled = current.get("enabled", enabled)
+        if not isinstance(enabled, bool):
+            raise FleetError(
+                f"cannot sync recipe catalog: recipe {recipe_key} "
+                "has a non-boolean enabled switch"
+            )
+        repaired = copy.deepcopy(canonical)
+        repaired["enabled"] = enabled
+        recipes[recipe_key] = repaired
+
+    config["recipeCatalogVersion"] = catalog["version"]
+    return changes
+
+
+def capacity_exhaustion_signal(text: str) -> str | None:
+    for pattern in CAPACITY_EXHAUSTION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return " ".join(match.group(0).split())
+    return None
 
 
 def save_config(path: Path, config: dict[str, Any], dry_run: bool = False) -> None:
@@ -975,6 +1098,143 @@ def close_captured_agent(
     return True
 
 
+def capacity_event_for_id(config: dict[str, Any], event_id: str) -> dict[str, Any]:
+    binding = captured_event_binding(config, event_id)
+    if binding is None or binding[1].get("resolutionClass") != "capacity":
+        raise FleetError(f"capacity recovery event {event_id!r} is missing")
+    return binding[1]
+
+
+def resume_capacity_recovery(
+    config_path: Path,
+    config: dict[str, Any],
+    stream: dict[str, Any],
+    event: dict[str, Any],
+) -> None:
+    require_recipe_catalog(config)
+    role = event.get("role")
+    prompt_file = event.get("promptFile")
+    if role not in {"impl", "review"} or not isinstance(prompt_file, str):
+        raise FleetError("capacity recovery event is missing its role or promptFile")
+    current = stream.get("agents", {}).get(role)
+    if (
+        isinstance(current, dict)
+        and current.get("name")
+        and current.get("name") != event.get("agent")
+    ):
+        dispatch_state = current.get("dispatchState", "")
+        if dispatch_state not in {"prompting", "active", "captured", "closed"}:
+            error = (
+                f"capacity replacement {current.get('name')} stopped at "
+                f"{dispatch_state or 'legacy-active'}; reconcile it before retrying"
+            )
+            event["recoveryError"] = error
+            save_config(config_path, config)
+            raise FleetError(error)
+        event["replacementAgent"] = current.get("name")
+        event["replacementRecipe"] = current.get("recipe")
+        event.setdefault("recoveredAt", utc_now_iso())
+        event.pop("recoveryError", None)
+        save_config(config_path, config)
+        return
+
+    dispatch_args = argparse.Namespace(
+        config=str(config_path),
+        dry_run=False,
+        ticket=stream["ticket"],
+        role=role,
+        prompt_file=prompt_file,
+    )
+    try:
+        cmd_dispatch(dispatch_args)
+    except FleetError as exc:
+        latest = load_config(config_path)
+        failed_event = capacity_event_for_id(latest, event["eventId"])
+        failed_event["recoveryError"] = str(exc)
+        save_config(config_path, latest)
+        raise
+
+    latest = load_config(config_path)
+    replacement_stream = find_stream(latest, stream["ticket"])
+    replacement = replacement_stream.get("agents", {}).get(role, {})
+    recovered_event = capacity_event_for_id(latest, event["eventId"])
+    recovered_event["replacementAgent"] = replacement.get("name")
+    recovered_event["replacementRecipe"] = replacement.get("recipe")
+    recovered_event["recoveredAt"] = utc_now_iso()
+    recovered_event.pop("recoveryError", None)
+    save_config(config_path, latest)
+
+
+def recover_capacity(
+    config_path: Path,
+    config: dict[str, Any],
+    stream: dict[str, Any],
+    record: dict[str, Any],
+    event_id: str,
+    capture_path: Path,
+    capture_error: str,
+    signal: str,
+) -> None:
+    """Close a spent lane and durably dispatch its next configured fallback."""
+    require_recipe_catalog(config)
+    role = record.get("role", "")
+    if role not in {"impl", "review"}:
+        raise FleetError(f"capacity recovery has unknown role {role!r}")
+    prompt_file = record.get("promptFile")
+    if not isinstance(prompt_file, str) or not Path(prompt_file).is_file():
+        raise FleetError(
+            "capacity recovery requires the failed lane's existing promptFile"
+        )
+    recipe_key = record.get("recipe")
+    recipe = config.get("recipes", {}).get(recipe_key)
+    if not isinstance(recipe, dict):
+        raise FleetError(f"capacity recovery has unknown selected recipe {recipe_key!r}")
+    pool_key = recipe.get("usagePool")
+    pool = config.get("usagePools", {}).get(pool_key)
+    if not isinstance(pool_key, str) or not isinstance(pool, dict):
+        raise FleetError(
+            f"capacity recovery has no usage pool for selected recipe {recipe_key!r}"
+        )
+
+    event = {
+        "at": utc_now_iso(),
+        "agent": record.get("name"),
+        "eventId": event_id,
+        "kind": "resolved-invalid-output",
+        "resolutionClass": "capacity",
+        "role": role,
+        "recipe": recipe_key,
+        "usagePool": pool_key,
+        "signal": signal,
+        "capturePath": str(capture_path),
+        "captureError": capture_error,
+        "promptFile": prompt_file,
+    }
+    close_captured_agent(config, record, event)
+    record["dispatchState"] = "resolved"
+    record["capturedAt"] = event["at"]
+    record["captureKind"] = "capacity-exhausted"
+    record["captureEventId"] = event_id
+    record["resolvedAt"] = event["at"]
+    record["resolutionReason"] = f"usage pool {pool_key} exhausted: {signal}"
+    record.pop("lastCaptureFailure", None)
+    stream.setdefault("events", []).append(event)
+    if stream.get("phase") != "hold":
+        stream["resumePhase"] = stream.get("phase", "")
+    stream["phase"] = "hold"
+    stream["holdReason"] = record["resolutionReason"]
+    pool.update(
+        {
+            "state": "spent",
+            "spentAt": event["at"],
+            "evidence": signal,
+            "capturePath": str(capture_path),
+        }
+    )
+    save_config(config_path, config)
+    resume_capacity_recovery(config_path, config, stream, event)
+
+
 def cmd_capture(args: argparse.Namespace) -> int:
     config_path = config_path_from_args(args)
     config = load_config(config_path)
@@ -993,6 +1253,13 @@ def cmd_capture(args: argparse.Namespace) -> int:
                     f"event ID {event_id!r} already belongs to "
                     f"{existing.get('agent', 'an unknown agent')}"
                 )
+            if existing.get("resolutionClass") == "capacity":
+                if existing.get("replacementAgent"):
+                    return 0
+                resume_capacity_recovery(
+                    config_path, config, existing_stream, existing
+                )
+                return 0
             if existing.get("kind") not in CAPTURE_EVENT_KINDS:
                 raise FleetError(f"event ID {event_id!r} is not a capture event")
             if args.close and not existing.get("closedAt"):
@@ -1105,6 +1372,29 @@ def cmd_capture(args: argparse.Namespace) -> int:
             "error": str(exc),
         }
         save_config(config_path, config)
+        capacity_signal = capacity_exhaustion_signal(text)
+        if capacity_signal:
+            if event_id is None:
+                raise FleetError(
+                    "capacity exhausted but automatic recovery requires --event-id; "
+                    f"transcript saved at {capture_path}"
+                ) from exc
+            if not args.close:
+                raise FleetError(
+                    "capacity exhausted; retry this exact capture with --capture-file "
+                    f"{capture_path} --event-id {event_id} --close"
+                ) from exc
+            recover_capacity(
+                config_path,
+                config,
+                stream,
+                record,
+                event_id,
+                capture_path,
+                str(exc),
+                capacity_signal,
+            )
+            return 0
         raise FleetError(f"{exc}; transcript saved at {capture_path}") from exc
 
     if args.close:
@@ -1182,11 +1472,17 @@ def cmd_resolve_event(args: argparse.Namespace) -> int:
                 f"{capture_failure.get('eventId')!r}"
             )
         try:
-            supplied_path.read_text()
+            supplied_text = supplied_path.read_text()
         except OSError as exc:
             raise FleetError(
                 f"cannot read saved malformed capture at {supplied_path}: {exc}"
             ) from exc
+        if capacity_exhaustion_signal(supplied_text):
+            raise FleetError(
+                "capture proves capacity exhaustion; retry it with fleet capture "
+                "--capture-file, the same --event-id, and --close so the configured "
+                "fallback is dispatched"
+            )
         resolved_at = utc_now_iso()
         stream.setdefault("events", []).append(
             {
@@ -1325,6 +1621,29 @@ def cmd_state(args: argparse.Namespace) -> int:
         )
         for warning in drift_warnings(config, stream, agents):
             print(f"  warning: {warning}", file=sys.stderr)
+    return 0
+
+
+def cmd_recipes(args: argparse.Namespace) -> int:
+    config_path = config_path_from_args(args)
+    config = load_config(config_path)
+    if args.recipe_action == "check":
+        require_recipe_catalog(config)
+        print("recipe catalog: current")
+        return 0
+
+    changes = sync_recipe_catalog(config)
+    if args.dry_run:
+        if changes:
+            print("# dry-run: would repair recipe catalog: " + "; ".join(changes))
+        else:
+            print("# dry-run: recipe catalog is already current")
+        return 0
+    save_config(config_path, config)
+    if changes:
+        print("recipe catalog synced: " + "; ".join(changes))
+    else:
+        print("recipe catalog: already current")
     return 0
 
 
@@ -1865,6 +2184,7 @@ def validate_dispatch_phase(stream: dict[str, Any], role: str) -> None:
 def cmd_dispatch(args: argparse.Namespace) -> int:
     config_path = config_path_from_args(args)
     config = load_config(config_path)
+    require_recipe_catalog(config)
     stream = find_stream(config, args.ticket)
     role = args.role
     dispatch_number = next_dispatch_number(stream, role)
@@ -2107,6 +2427,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_state = sub.add_parser("state", help="Show stream state and next actions", parents=[common])
     p_state.set_defaults(func=cmd_state)
 
+    p_recipes = sub.add_parser(
+        "recipes", help="Check or sync the canonical recipe catalog", parents=[common]
+    )
+    p_recipes.add_argument("recipe_action", choices=["check", "sync"])
+    p_recipes.set_defaults(func=cmd_recipes)
+
     p_verdict = sub.add_parser("verdict", help="Apply verdict table to newest verdict", parents=[common])
     p_verdict.add_argument("ticket")
     p_verdict.add_argument("--commit", action="store_true")
@@ -2134,6 +2460,8 @@ def mutates_config(args: argparse.Namespace) -> bool:
         return False
     if args.command in {"capture", "resolve-event", "dispatch", "land"}:
         return True
+    if args.command == "recipes":
+        return args.recipe_action == "sync"
     return args.command == "verdict" and bool(args.commit)
 
 

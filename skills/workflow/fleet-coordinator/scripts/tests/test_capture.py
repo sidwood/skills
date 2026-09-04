@@ -224,6 +224,7 @@ class CaptureTests(unittest.TestCase):
         self.config_path = Path(self.tmp.name) / "fleet.json"
         with open(FIXTURES / "fleet.json") as fh:
             config = json.load(fh)
+        fleet.sync_recipe_catalog(config)
         config["streams"][0]["checkout"] = str(self.checkout)
         config["streams"][0]["agents"] = {
             "review": {
@@ -240,6 +241,8 @@ class CaptureTests(unittest.TestCase):
             },
         }
         self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        self.prompt = Path(self.tmp.name) / "prompt.txt"
+        self.prompt.write_text("finish the implementation\n")
 
     def args(self, *extra: str) -> fleet.argparse.Namespace:
         return fleet.build_parser().parse_args(["--config", str(self.config_path), "capture", *extra])
@@ -288,6 +291,170 @@ class CaptureTests(unittest.TestCase):
         self.assertFalse(
             any(event.get("eventId") == event_id for event in stream.get("events", []))
         )
+
+    @mock.patch("fleet.herdr_agent_prompt")
+    @mock.patch("fleet.herdr_agent_start")
+    @mock.patch(
+        "fleet.herdr_tab_create",
+        return_value={"tab_id": "replacement-tab", "pane_id": "replacement-pane"},
+    )
+    @mock.patch("fleet.herdr_tab_close")
+    def test_hard_limit_dispatches_cursor_grok_fallback_automatically(
+        self,
+        mock_tab_close: mock.Mock,
+        mock_tab_create: mock.Mock,
+        mock_agent_start: mock.Mock,
+        mock_agent_prompt: mock.Mock,
+    ) -> None:
+        event_id = "t094-1-impl@9"
+        capture_file = Path(self.tmp.name) / "grok-limit.txt"
+        capture_file.write_text(
+            "You hit your weekly limit.\n"
+            "You can continue by purchasing more credits.\n"
+            "Weekly limit left: 0% · Grok 4.6 (xhigh)\n"
+        )
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        stream["implRecipe"] = "grok-xhigh"
+        stream["dispatchCounters"] = {"impl": 1}
+        stream["agents"]["review"]["dispatchState"] = "closed"
+        stream["agents"]["impl"].update(
+            {
+                "dispatchNumber": 1,
+                "requestedRecipe": "grok-xhigh",
+                "recipe": "grok-xhigh",
+                "dispatchState": "active",
+                "promptFile": str(self.prompt),
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        args = self.args(
+            "t094-1-impl",
+            "--event-id",
+            event_id,
+            "--capture-file",
+            str(capture_file),
+            "--close",
+        )
+        self.assertEqual(fleet.cmd_capture(args), 0)
+        self.assertEqual(fleet.cmd_capture(args), 0)
+
+        config = json.loads(self.config_path.read_text())
+        stream = config["streams"][0]
+        replacement = stream["agents"]["impl"]
+        self.assertEqual(config["usagePools"]["grok-native"]["state"], "spent")
+        self.assertEqual(replacement["requestedRecipe"], "grok-xhigh")
+        self.assertEqual(replacement["recipe"], "grok-xhigh-cursor")
+        self.assertEqual(replacement["dispatchState"], "active")
+        event = next(e for e in stream["events"] if e.get("eventId") == event_id)
+        self.assertEqual(event["resolutionClass"], "capacity")
+        self.assertEqual(event["usagePool"], "grok-native")
+        self.assertEqual(event["replacementAgent"], replacement["name"])
+        self.assertEqual(event["replacementRecipe"], "grok-xhigh-cursor")
+        mock_tab_close.assert_called_once()
+        mock_tab_create.assert_called_once()
+        mock_agent_start.assert_called_once()
+        mock_agent_prompt.assert_called_once()
+
+    @mock.patch("fleet.herdr_tab_close")
+    def test_hard_limit_refuses_incomplete_recipe_catalog_before_teardown(
+        self, mock_tab_close: mock.Mock
+    ) -> None:
+        event_id = "t094-1-impl@9"
+        capture_file = Path(self.tmp.name) / "grok-limit.txt"
+        capture_file.write_text("You hit your weekly limit.\n")
+        config = json.loads(self.config_path.read_text())
+        config["recipes"].pop("grok-xhigh-cursor")
+        stream = config["streams"][0]
+        stream["implRecipe"] = "grok-xhigh"
+        stream["agents"]["impl"].update(
+            {
+                "requestedRecipe": "grok-xhigh",
+                "recipe": "grok-xhigh",
+                "dispatchState": "active",
+                "promptFile": str(self.prompt),
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "RECIPE-DRIFT"):
+            fleet.cmd_capture(
+                self.args(
+                    "t094-1-impl",
+                    "--event-id",
+                    event_id,
+                    "--capture-file",
+                    str(capture_file),
+                    "--close",
+                )
+            )
+
+        mock_tab_close.assert_not_called()
+        config = json.loads(self.config_path.read_text())
+        self.assertEqual(config["usagePools"]["grok-native"]["state"], "available")
+
+    @mock.patch("fleet.herdr_recipe_pre_start", return_value=True)
+    @mock.patch("fleet.herdr_agent_prompt")
+    @mock.patch("fleet.herdr_agent_start")
+    @mock.patch(
+        "fleet.herdr_tab_create",
+        return_value={"tab_id": "glm-tab", "pane_id": "glm-pane"},
+    )
+    @mock.patch("fleet.herdr_tab_close")
+    def test_cursor_grok_limit_advances_original_route_to_glm(
+        self,
+        mock_tab_close: mock.Mock,
+        mock_tab_create: mock.Mock,
+        mock_agent_start: mock.Mock,
+        mock_agent_prompt: mock.Mock,
+        mock_pre_start: mock.Mock,
+    ) -> None:
+        event_id = "t094-1-cursor-impl@10"
+        capture_file = Path(self.tmp.name) / "cursor-limit.txt"
+        capture_file.write_text("No usage credits remaining.\n")
+        config = json.loads(self.config_path.read_text())
+        config["usagePools"]["grok-native"]["state"] = "spent"
+        stream = config["streams"][0]
+        stream["implRecipe"] = "grok-xhigh"
+        stream["dispatchCounters"] = {"impl": 2}
+        stream["agents"]["review"]["dispatchState"] = "closed"
+        stream["agents"]["impl"].update(
+            {
+                "name": "t094-1-cursor-impl",
+                "dispatchNumber": 2,
+                "requestedRecipe": "grok-xhigh",
+                "recipe": "grok-xhigh-cursor",
+                "dispatchState": "active",
+                "promptFile": str(self.prompt),
+            }
+        )
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        self.assertEqual(
+            fleet.cmd_capture(
+                self.args(
+                    "t094-1-cursor-impl",
+                    "--event-id",
+                    event_id,
+                    "--capture-file",
+                    str(capture_file),
+                    "--close",
+                )
+            ),
+            0,
+        )
+
+        config = json.loads(self.config_path.read_text())
+        replacement = config["streams"][0]["agents"]["impl"]
+        self.assertEqual(config["usagePools"]["cursor-grok"]["state"], "spent")
+        self.assertEqual(replacement["requestedRecipe"], "grok-xhigh")
+        self.assertEqual(replacement["recipe"], "glm-53")
+        self.assertEqual(mock_agent_start.call_args.args[3]["kind"], "claude")
+        mock_tab_close.assert_called_once()
+        mock_tab_create.assert_called_once()
+        mock_agent_prompt.assert_called_once()
+        mock_pre_start.assert_called_once()
 
     @mock.patch("fleet.herdr_agent_read")
     def test_capture_retries_a_saved_transcript_without_reading_herdr(

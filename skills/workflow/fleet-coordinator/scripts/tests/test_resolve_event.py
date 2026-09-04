@@ -222,6 +222,25 @@ class ResolveEventTests(unittest.TestCase):
         self.assertEqual(stream["phase"], "hold")
         self.assertEqual(stream["resumePhase"], "implementing")
 
+    def test_resolution_refuses_to_misclassify_capacity_as_invalid_output(self) -> None:
+        capture_path = Path(self.tmp.name) / "ticket-impl.txt"
+        capture_path.write_text("You hit your weekly limit.\n")
+        config = json.loads(self.config_path.read_text())
+        config["streams"][0]["agents"]["impl"]["lastCaptureFailure"] = {
+            "at": "2026-09-04T00:00:00+00:00",
+            "eventId": "ticket-impl@missing",
+            "capturePath": str(capture_path),
+            "error": "missing REVIEW-READY",
+        }
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+
+        with self.assertRaisesRegex(fleet.FleetError, "capacity exhaustion"):
+            fleet.cmd_resolve_event(self.args(capture_file=capture_path))
+
+        stream = json.loads(self.config_path.read_text())["streams"][0]
+        self.assertEqual(stream["agents"]["impl"]["dispatchState"], "active")
+        self.assertEqual(stream.get("events"), None)
+
     def test_resolution_rejects_the_wrong_malformed_capture_path(self) -> None:
         capture_path = Path(self.tmp.name) / "ticket-impl.txt"
         capture_path.write_text("invalid\n")

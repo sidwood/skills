@@ -42,10 +42,11 @@ Export them, or point `FLEET_ENV` at a file that sets them
    follow, carrying ⚠️ only if the fleet is genuinely stopped on them. Full
    contract: [references/comms-contract.md](references/comms-contract.md).
 2. **Adopt or verify the fleet.** Run `date`. Run `scripts/self-eval.sh` and
-   read the computed queue, lane inventory, and drift lines. Reconcile every
-   drift line with the coordinator before dispatching anything.
-   *Done when:* self-eval prints no `QUEUE-DRIFT`, no `ORPHANED`, and the lane
-   list matches the config's active streams.
+   read the computed queue, lane inventory, recipe-catalog status, and drift
+   lines. `RECIPE-DRIFT` means the coordinator must run `fleet recipes sync`
+   before any dispatch. Reconcile every drift line with the coordinator.
+   *Done when:* self-eval prints no `RECIPE-DRIFT`, no `QUEUE-DRIFT`, no
+   `ORPHANED`, and the lane list matches the config's active streams.
 3. **Arm four monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
    through the harness's persistent facility, one launch, never `&`; its
    singleton lock rejects a second live copy. A CI watcher per push. Self-eval
@@ -85,7 +86,10 @@ Export them, or point `FLEET_ENV` at a file that sets them
 7. **Police the fleet at every checkpoint.** Act on each self-eval finding in
    the same turn: relaunch dead watchers, refresh a stale optional projection,
    name the bottleneck behind a velocity stall, dispatch behind stale
-   blockers, fill idle seats.
+   blockers, fill idle seats. A `CAPACITY-STALL` or
+   `CAPACITY-RECOVERY-FAILED` is a coordinator malfunction: pulse it to retry
+   the exact capture event; escalate only when the configured route is truly
+   exhausted.
    *Done when:* no alarm line from the last run is still true.
    [references/self-eval.md](references/self-eval.md).
 8. **Hand over or close the shift.** Write the handover from

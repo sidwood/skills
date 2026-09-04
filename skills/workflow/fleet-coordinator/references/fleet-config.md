@@ -15,6 +15,13 @@ create a fleet config. Mutating commands hold an exclusive lock at
 Capture tails go to `FLEET_CAPTURES_DIR` when set, otherwise to `captures/`
 beside the resolved config. Each file is written atomically before parsing.
 
+After creating or adopting a config, run `fleet recipes sync`, then
+`fleet recipes check`. The sync command installs the exact machine-readable
+[recipe catalog](../assets/recipe-catalog.json), repairs launch arguments and
+fallback order, preserves every valid usage-pool state and recipe `enabled`
+switch, and leaves additional project recipes untouched. Dispatch refuses to
+start while the canonical catalog is missing or drifted.
+
 ## Schema
 
 ```jsonc
@@ -25,98 +32,12 @@ beside the resolved config. Each file is written atomically before parsing.
   "user": "name pasted into prompts with deployment context",
   "deploymentContext": "Target environment, who uses it, what P0-P2 means here. Pasted into every prompt.",
 
-  // Recipes are keyed by MODEL TIER, one entry per backend+effort — never
-  // per instance. A recipe can launch any number of concurrent agents;
-  // uniqueness lives in the agent NAME chosen at dispatch, derived from the
-  // ticket, a stable ticket hash, role, and persistent per-role dispatch
-  // counter: T094.1's first implementer -> t094-1-<hash>-impl-1. The hash
-  // prevents normalized or truncated ticket IDs from colliding. Herdr names
-  // match [a-z][a-z0-9_-]{0,31}; no dots.
-  // A usage pool represents one real quota/credit window. Set its state to
-  // "spent" only after conclusive hard-cap evidence. Recipes sharing a pool
-  // become unavailable together.
-  "usagePools": {
-    "cursor-composer": { "state": "available" },
-    "cursor-grok": { "state": "available" },
-    "grok-native": { "state": "available" },
-    "glm": { "state": "available" },
-    "anthropic-opus": { "state": "available" },
-    "openai-sol": { "state": "available" }
-  },
-
-  "recipes": {
-    "composer-2.5": {
-      "kind": "cursor", "enabled": true, "usagePool": "cursor-composer",
-      "fallbacks": ["glm-53", "grok-high"],
-      "args": ["--model", "composer-2.5", "-f"]
-    },
-    "grok-xhigh": {
-      "kind": "grok", "enabled": true, "usagePool": "grok-native",
-      "fallbacks": ["grok-xhigh-cursor", "glm-53"],
-      "args": ["--model", "grok-4.6", "--reasoning-effort", "xhigh", "--always-approve"]
-    },
-    "grok-high": {
-      "kind": "grok", "enabled": true, "usagePool": "grok-native",
-      "fallbacks": ["glm-53", "grok-high-cursor"],
-      "args": ["--model", "grok-4.6", "--reasoning-effort", "high", "--always-approve"]
-    },
-    "grok-xhigh-cursor": {
-      "kind": "cursor", "enabled": true, "usagePool": "cursor-grok",
-      "fallbacks": [],
-      "args": ["--model", "cursor-grok-4.6-xhigh", "-f"]
-    },
-    "grok-high-cursor": {
-      "kind": "cursor", "enabled": true, "usagePool": "cursor-grok",
-      "fallbacks": ["grok-high", "glm-53"],
-      "args": ["--model", "cursor-grok-4.6-high", "-f"]
-    },
-    "glm-53": {
-      "kind": "claude", "enabled": true, "usagePool": "glm",
-      "fallbacks": ["grok-high", "grok-high-cursor"],
-      "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
-      "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
-    },
-    "opus-max": {
-      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
-      "fallbacks": ["sol-max"],
-      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "max"]
-    },
-    "sol-max": {
-      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
-      "fallbacks": ["opus-max"],
-      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=max"]
-    },
-    "opus-xhigh": {
-      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
-      "fallbacks": ["sol-xhigh"],
-      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "xhigh"]
-    },
-    "sol-xhigh": {
-      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
-      "fallbacks": ["opus-xhigh"],
-      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=xhigh"]
-    },
-    "opus-high": {
-      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
-      "fallbacks": [],
-      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "high"]
-    },
-    "sol-high": {
-      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
-      "fallbacks": [],
-      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=high"]
-    },
-    "opus-medium": {
-      "kind": "claude", "enabled": true, "usagePool": "anthropic-opus",
-      "fallbacks": ["sol-medium"],
-      "args": ["--dangerously-skip-permissions", "--model", "opus", "--effort", "medium"]
-    },
-    "sol-medium": {
-      "kind": "codex", "enabled": true, "usagePool": "openai-sol",
-      "fallbacks": ["opus-medium"],
-      "args": ["--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium"]
-    }
-  },
+  // `fleet recipes sync` installs these sections from the skill's canonical
+  // assets/recipe-catalog.json. Do not hand-copy or trim the catalog. Disable
+  // an unused recipe with `enabled: false`; keep its definition present.
+  "recipeCatalogVersion": 1,
+  "usagePools": { "...canonical pools...": { "state": "available | spent" } },
+  "recipes": { "...canonical recipes...": { "enabled": true } },
 
   "implementerLadder": ["composer-2.5", "grok-high", "grok-xhigh"],
   "pairings": "Which reviewer tiers may review which implementer tiers (no family reviews its own work).",
@@ -187,6 +108,9 @@ beside the resolved config. Each file is written atomically before parsing.
 
 ## Recipe availability and fallback policy
 
+The catalog file is authoritative for exact keys, CLI kinds, arguments, pools,
+and fallback order. This table is only its human-readable route summary.
+
 | Requested recipe | Ordered route before operator alert |
 |---|---|
 | `grok-xhigh` | `grok-xhigh-cursor`, `glm-53` |
@@ -212,7 +136,9 @@ beside the resolved config. Each file is written atomically before parsing.
 - On conclusive exhaustion, preserve the transcript before teardown, close
   and reconcile the exact failed lane, mark the pool spent, then dispatch a
   fresh lane with the first enabled, available entry in the requested
-  recipe's ordered `fallbacks` list.
+  recipe's ordered `fallbacks` list. `fleet capture --event-id --close` does
+  this automatically for recognized hard-cap output and records the failed
+  and replacement recipes together.
 - Fallback lists are deliberately flat and non-recursive. Each primary lists
   its complete allowed route, which prevents reciprocal Opus/Sol policies
   from looping.
@@ -249,6 +175,16 @@ ignored path.
 A parse failure adds `lastCaptureFailure` with its timestamp, event ID, error,
 and saved capture path, but no acknowledgement event. The raised error names
 that path. A later successful capture clears the failure record.
+
+When that saved output contains a recognized, conclusive hard-cap signal and
+capture was called with `--event-id --close`, the CLI records a
+`resolved-invalid-output` event with `resolutionClass: "capacity"`, closes the
+failed tab, marks its selected recipe's pool `spent`, and immediately invokes
+dispatch for the same role and prompt. The replacement resolves from the
+stream's original requested recipe, so later capacity failures continue along
+the same flat route. The event records `replacementAgent` and
+`replacementRecipe`; an interruption before that record is complete is a
+`CAPACITY-STALL` at the next orchestrator self-evaluation.
 
 When a monitor supplies an event ID, treat it as an opaque idempotency key and
 persist it on the same `events[]` entry as the captured result. That atomic

@@ -72,6 +72,45 @@ invoke_self_eval() {
     bash "$SELF_EVAL"
 }
 
+sync_recipe_catalog() {
+  python3 \
+    "$REPO_ROOT/skills/workflow/fleet-coordinator/scripts/fleet.py" \
+    --config "$FLEET_FILE" recipes sync >/dev/null
+}
+
+@test "missing canonical Cursor Grok recipe reports recipe drift" {
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RECIPE-DRIFT:"* ]]
+  [[ "$output" == *"missing recipe grok-xhigh-cursor"* ]]
+}
+
+@test "capacity hold without replacement is an orchestrator alarm" {
+  cat > "$FLEET_FILE" <<'JSON'
+{"streams":[{
+  "ticket":"TICKET",
+  "phase":"hold",
+  "agents":{"impl":{"name":"ticket-impl","dispatchState":"resolved"}},
+  "events":[{
+    "eventId":"ticket-impl@9",
+    "agent":"ticket-impl",
+    "kind":"resolved-invalid-output",
+    "resolutionClass":"capacity",
+    "role":"impl",
+    "usagePool":"grok-native"
+  }]
+}]}
+JSON
+  sync_recipe_catalog
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"recipe catalog: current"* ]]
+  [[ "$output" == *"CAPACITY-STALL: TICKET"* ]]
+}
+
 @test "pending event handles a lane after its state sequence advances" {
   local sent_at pending_line
   sent_at=$(($(date +%s) - 12))

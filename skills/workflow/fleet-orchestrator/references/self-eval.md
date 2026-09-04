@@ -15,6 +15,7 @@ is a finding you will meet again, larger.
 
 | Section | Alarm | Action, same turn |
 |---------|-------|-------------------|
+| recipe catalog | `RECIPE-DRIFT` | order `fleet recipes sync`; no dispatch is allowed until `fleet recipes check` passes |
 | deadline | — | re-plan the remaining work if it does not fit |
 | lanes | `settled-unswept` | recover or rearm the settle monitor; `impl` routes to the coordinator and `review` routes to the orchestrator |
 | lanes | `blocked` | clear the waiting dialog |
@@ -28,6 +29,8 @@ is a finding you will meet again, larger.
 | blocked column | `STALE-BLOCKERS` | order the dispatch; the blocker already landed |
 | blocked column | top unblock levers | prioritize the blocker that frees the most work |
 | queue reconciliation | `QUEUE-DRIFT`, `ORPHANED` | have the coordinator re-phase or re-dispatch |
+| queue reconciliation | `CAPACITY-STALL` | have the coordinator retry the exact capture event; its automatic recovery must create the configured successor |
+| queue reconciliation | `CAPACITY-RECOVERY-FAILED` | read the recorded failure; repair startup state or raise the operator alert only if no configured recipe remains |
 
 An idle lane with ready work is a failure of the orchestrator, not of the
 lane. Keeping every seat busy is the point of the checkpoint.

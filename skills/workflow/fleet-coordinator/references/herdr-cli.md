@@ -74,9 +74,11 @@ completed.
   Workspace Trust dialog that swallows the first prompt. Accept it (send-keys
   `a`) or wait for it to clear, then re-send.
 - A captured, explicit hard-limit result (usage window exhausted or no credits
-  remain) is capacity evidence. Close and reconcile that exact lane, mark its
-  configured usage pool `spent`, and dispatch again from the original recipe so
-  its next enabled, available fallback is selected.
+  remain) is capacity evidence. `fleet capture <agent> --event-id <id> --close`
+  preserves the transcript, closes and reconciles that exact lane, marks its
+  configured usage pool `spent`, and immediately dispatches from the original
+  requested recipe. The packaged recipe catalog therefore selects Cursor Grok
+  XHigh after native Grok XHigh without a coordinator ruling.
 - A reset offer or remaining-usage notice is informational, not a spent pool.
   Authentication, configuration, startup, timeout, and ambiguous failures are
   also not capacity evidence. Preserve their transcript and raise an operator
@@ -84,6 +86,8 @@ completed.
   retire the exact unusable settlement with `fleet resolve-event <agent>
   --event-id <id> --capture-file <saved-transcript> --reason <text>` before a
   fresh dispatch; this records invalid output, never a verdict or spent pool.
+  `resolve-event` rejects recognized hard-cap evidence so it cannot turn a
+  recoverable capacity transition into an ordinary hold.
 - Any agent-read failure falls back to the recorded pane
   (`herdr pane read <pane-id> --lines 400`); `agent_not_found` after a process
   exits is the common case. If a prior failed capture saved the full output,

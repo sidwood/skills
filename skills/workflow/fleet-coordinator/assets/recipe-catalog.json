@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "usagePools": {
+    "cursor-composer": { "state": "available" },
+    "cursor-grok": { "state": "available" },
+    "grok-native": { "state": "available" },
+    "glm": { "state": "available" },
+    "anthropic-opus": { "state": "available" },
+    "openai-sol": { "state": "available" }
+  },
+  "recipes": {
+    "composer-2.5": {
+      "kind": "cursor",
+      "enabled": true,
+      "usagePool": "cursor-composer",
+      "fallbacks": ["glm-53", "grok-high"],
+      "args": ["--model", "composer-2.5", "-f"]
+    },
+    "grok-xhigh": {
+      "kind": "grok",
+      "enabled": true,
+      "usagePool": "grok-native",
+      "fallbacks": ["grok-xhigh-cursor", "glm-53"],
+      "args": [
+        "--model",
+        "grok-4.6",
+        "--reasoning-effort",
+        "xhigh",
+        "--always-approve"
+      ]
+    },
+    "grok-high": {
+      "kind": "grok",
+      "enabled": true,
+      "usagePool": "grok-native",
+      "fallbacks": ["glm-53", "grok-high-cursor"],
+      "args": [
+        "--model",
+        "grok-4.6",
+        "--reasoning-effort",
+        "high",
+        "--always-approve"
+      ]
+    },
+    "grok-xhigh-cursor": {
+      "kind": "cursor",
+      "enabled": true,
+      "usagePool": "cursor-grok",
+      "fallbacks": [],
+      "args": ["--model", "cursor-grok-4.6-xhigh", "-f"]
+    },
+    "grok-high-cursor": {
+      "kind": "cursor",
+      "enabled": true,
+      "usagePool": "cursor-grok",
+      "fallbacks": ["grok-high", "glm-53"],
+      "args": ["--model", "cursor-grok-4.6-high", "-f"]
+    },
+    "glm-53": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "glm",
+      "fallbacks": ["grok-high", "grok-high-cursor"],
+      "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
+      "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
+    },
+    "opus-max": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-max"],
+      "args": [
+        "--dangerously-skip-permissions",
+        "--model",
+        "opus",
+        "--effort",
+        "max"
+      ]
+    },
+    "sol-max": {
+      "kind": "codex",
+      "enabled": true,
+      "usagePool": "openai-sol",
+      "fallbacks": ["opus-max"],
+      "args": [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=max"
+      ]
+    },
+    "opus-xhigh": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-xhigh"],
+      "args": [
+        "--dangerously-skip-permissions",
+        "--model",
+        "opus",
+        "--effort",
+        "xhigh"
+      ]
+    },
+    "sol-xhigh": {
+      "kind": "codex",
+      "enabled": true,
+      "usagePool": "openai-sol",
+      "fallbacks": ["opus-xhigh"],
+      "args": [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=xhigh"
+      ]
+    },
+    "opus-high": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "anthropic-opus",
+      "fallbacks": [],
+      "args": [
+        "--dangerously-skip-permissions",
+        "--model",
+        "opus",
+        "--effort",
+        "high"
+      ]
+    },
+    "sol-high": {
+      "kind": "codex",
+      "enabled": true,
+      "usagePool": "openai-sol",
+      "fallbacks": [],
+      "args": [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=high"
+      ]
+    },
+    "opus-medium": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "anthropic-opus",
+      "fallbacks": ["sol-medium"],
+      "args": [
+        "--dangerously-skip-permissions",
+        "--model",
+        "opus",
+        "--effort",
+        "medium"
+      ]
+    },
+    "sol-medium": {
+      "kind": "codex",
+      "enabled": true,
+      "usagePool": "openai-sol",
+      "fallbacks": ["opus-medium"],
+      "args": [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        "model_reasoning_effort=medium"
+      ]
+    }
+  }
+}

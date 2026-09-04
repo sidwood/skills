@@ -5,9 +5,10 @@
 # output: is the fleet moving correctly, what can be improved, what efficiency
 # is available. Every finding becomes an action in the same turn.
 #
-# Alarm words are grep-able on purpose: MONITOR-DOWN, BOARD-STALE,
-# VELOCITY-STALL, STALE-BLOCKERS, QUEUE-DRIFT, ORPHANED. See
-# references/self-eval.md for the action each one demands.
+# Alarm words are grep-able on purpose: RECIPE-DRIFT, MONITOR-DOWN,
+# BOARD-STALE, VELOCITY-STALL, STALE-BLOCKERS, QUEUE-DRIFT, ORPHANED,
+# CAPACITY-STALL, CAPACITY-RECOVERY-FAILED. See references/self-eval.md for
+# the action each one demands.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,6 +44,14 @@ touch "$FLEET_SWEPT"
 
 now="$(date +%s)"
 echo "=== SELF-EVAL $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+
+echo "--- recipe catalog ---"
+fleet_cli="$SCRIPT_DIR/../../fleet-coordinator/scripts/fleet.py"
+if recipe_check="$(python3 "$fleet_cli" --config "$FLEET_CONFIG" recipes check 2>&1)"; then
+  echo "$recipe_check"
+else
+  echo "$recipe_check"
+fi
 
 if [ -n "${FLEET_DEADLINE:-}" ]; then
   python3 - "$FLEET_DEADLINE" "$now" <<'PYTHON'
@@ -318,6 +327,34 @@ for s in streams:
         if not expected_lanes.intersection(lane_names):
             drift.append(f"ORPHANED: {ticket} phase '{phase}' with no matching lane - "
                          're-dispatch it or re-phase it')
+
+    if phase == 'hold':
+        for event in s.get('events', []):
+            if event.get('resolutionClass') != 'capacity':
+                continue
+            error = event.get('recoveryError')
+            if error:
+                drift.append(
+                    f"CAPACITY-RECOVERY-FAILED: {ticket} after {event.get('agent')} - "
+                    f"{error}"
+                )
+                continue
+            if event.get('replacementAgent'):
+                continue
+            role = event.get('role')
+            current = s.get('agents', {}).get(role, {})
+            if current.get('name') != event.get('agent'):
+                drift.append(
+                    f"CAPACITY-RECOVERY-FAILED: {ticket} after {event.get('agent')} - "
+                    f"replacement {current.get('name') or '?'} stopped at "
+                    f"{current.get('dispatchState') or 'unknown'}"
+                )
+            else:
+                drift.append(
+                    f"CAPACITY-STALL: {ticket} has no replacement after "
+                    f"{event.get('agent')} exhausted {event.get('usagePool')} - "
+                    'retry the exact capture event'
+                )
 
 print('train queue:', ', '.join(queue) if queue else '(empty)')
 for line in drift:

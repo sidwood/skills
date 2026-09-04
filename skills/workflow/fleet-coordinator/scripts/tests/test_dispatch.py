@@ -26,6 +26,7 @@ class DispatchTests(unittest.TestCase):
         self.config_path = Path(self.tmp.name) / "fleet.json"
         with open(FIXTURES / "fleet.json") as fh:
             config = json.load(fh)
+        fleet.sync_recipe_catalog(config)
         self.prompt = Path(self.tmp.name) / "prompt.txt"
         self.prompt.write_text("hello\n")
         self.config_path.write_text(json.dumps(config, indent=2) + "\n")
@@ -374,6 +375,7 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(record["dispatchNumber"], 1)
         self.assertEqual(mock_tab_create.call_count, 1)
 
+    @mock.patch("fleet.herdr_recipe_pre_start", return_value=True)
     @mock.patch("fleet.herdr_agent_prompt")
     @mock.patch("fleet.herdr_agent_start")
     @mock.patch(
@@ -385,11 +387,10 @@ class DispatchTests(unittest.TestCase):
         mock_tab_create: mock.Mock,
         mock_agent_start: mock.Mock,
         mock_agent_prompt: mock.Mock,
+        mock_pre_start: mock.Mock,
     ) -> None:
         config = json.loads(self.config_path.read_text())
-        config["recipes"]["composer-2.5"].update(
-            {"enabled": False, "fallbacks": ["opus-max"]}
-        )
+        config["recipes"]["composer-2.5"]["enabled"] = False
         self.config_path.write_text(json.dumps(config, indent=2) + "\n")
         args = fleet.build_parser().parse_args(
             [
@@ -409,8 +410,33 @@ class DispatchTests(unittest.TestCase):
             "impl"
         ]
         self.assertEqual(record["requestedRecipe"], "composer-2.5")
-        self.assertEqual(record["recipe"], "opus-max")
+        self.assertEqual(record["recipe"], "glm-53")
         self.assertEqual(mock_agent_start.call_args.args[3]["kind"], "claude")
+        mock_pre_start.assert_called_once()
+
+    @mock.patch("fleet.herdr_tab_create")
+    def test_dispatch_refuses_catalog_drift_before_side_effects(
+        self, mock_tab_create: mock.Mock
+    ) -> None:
+        config = json.loads(self.config_path.read_text())
+        config["recipes"]["grok-xhigh"]["fallbacks"] = ["glm-53"]
+        self.config_path.write_text(json.dumps(config, indent=2) + "\n")
+        args = fleet.build_parser().parse_args(
+            [
+                "--config",
+                str(self.config_path),
+                "dispatch",
+                "T094.1",
+                "impl",
+                "--prompt-file",
+                str(self.prompt),
+            ]
+        )
+
+        with self.assertRaisesRegex(fleet.FleetError, "RECIPE-DRIFT"):
+            fleet.cmd_dispatch(args)
+
+        mock_tab_create.assert_not_called()
 
     def test_config_path_defaults_below_fleet_seed(self) -> None:
         args = fleet.build_parser().parse_args(["state"])
@@ -993,4 +1019,55 @@ class RecipeAvailabilityTests(unittest.TestCase):
                 "t1-impl-1",
                 "w1:p2",
                 {"envPreStep": "false"},
+            )
+
+
+class RecipeCatalogTests(unittest.TestCase):
+    def test_sync_repairs_routes_and_preserves_availability(self) -> None:
+        config = {
+            "usagePools": {
+                "grok-native": {
+                    "state": "spent",
+                    "evidence": "weekly limit exhausted",
+                }
+            },
+            "recipes": {
+                "grok-xhigh": {
+                    "kind": "grok",
+                    "enabled": False,
+                    "usagePool": "grok-native",
+                    "fallbacks": ["glm-53"],
+                    "args": [],
+                }
+            },
+        }
+
+        drift = fleet.sync_recipe_catalog(config)
+
+        self.assertIn("missing recipe grok-xhigh-cursor", drift)
+        self.assertEqual(config["recipeCatalogVersion"], 1)
+        self.assertEqual(
+            config["recipes"]["grok-xhigh"]["fallbacks"],
+            ["grok-xhigh-cursor", "glm-53"],
+        )
+        self.assertFalse(config["recipes"]["grok-xhigh"]["enabled"])
+        self.assertEqual(config["usagePools"]["grok-native"]["state"], "spent")
+        self.assertEqual(
+            config["usagePools"]["grok-native"]["evidence"],
+            "weekly limit exhausted",
+        )
+        self.assertEqual(fleet.recipe_catalog_drift(config), [])
+
+    def test_recipes_cli_sync_then_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "fleet.json"
+            config_path.write_text('{"usagePools":{},"recipes":{},"streams":[]}\n')
+
+            self.assertEqual(
+                fleet.main(["--config", str(config_path), "recipes", "sync"]),
+                0,
+            )
+            self.assertEqual(
+                fleet.main(["--config", str(config_path), "recipes", "check"]),
+                0,
             )
