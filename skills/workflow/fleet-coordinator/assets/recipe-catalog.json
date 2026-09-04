@@ -1,10 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "usagePools": {
     "cursor-composer": { "state": "available" },
     "cursor-grok": { "state": "available" },
     "grok-native": { "state": "available" },
     "glm": { "state": "available" },
+    "anthropic-fable": { "state": "available" },
     "anthropic-opus": { "state": "available" },
     "openai-sol": { "state": "available" }
   },
@@ -63,6 +64,19 @@
       "fallbacks": ["grok-high", "grok-high-cursor"],
       "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
       "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
+    },
+    "fable-max": {
+      "kind": "claude",
+      "enabled": true,
+      "usagePool": "anthropic-fable",
+      "fallbacks": [],
+      "args": [
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-fable-5-1",
+        "--effort",
+        "max"
+      ]
     },
     "opus-max": {
       "kind": "claude",

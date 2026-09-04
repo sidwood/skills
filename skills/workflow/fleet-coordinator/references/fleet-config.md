@@ -117,6 +117,7 @@ and fallback order. This table is only its human-readable route summary.
 | `grok-high` | `glm-53`, `grok-high-cursor` |
 | `glm-53` | `grok-high`, `grok-high-cursor` |
 | `grok-high-cursor` | `grok-high`, `glm-53` |
+| `fable-max` | operator alert; no successor configured |
 | `opus-max` / `sol-max` | the other recipe |
 | `opus-xhigh` / `sol-xhigh` | the other recipe |
 | `opus-medium` / `sol-medium` | the other recipe |
@@ -143,7 +144,7 @@ and fallback order. This table is only its human-readable route summary.
   its complete allowed route, which prevents reciprocal Opus/Sol policies
   from looping.
 - If no listed candidate is enabled and available, dispatch stops with an
-  operator alert. `sol-high`, `opus-high`, and directly requested
+  operator alert. `fable-max`, `sol-high`, `opus-high`, and directly requested
   `grok-xhigh-cursor` have no invented fallback, because none was specified.
 - Availability edits affect future dispatches only. They never kill or
   silently replace an active lane. Each lane records both `requestedRecipe`

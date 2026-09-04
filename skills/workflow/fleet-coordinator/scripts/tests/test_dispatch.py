@@ -1045,7 +1045,7 @@ class RecipeCatalogTests(unittest.TestCase):
         drift = fleet.sync_recipe_catalog(config)
 
         self.assertIn("missing recipe grok-xhigh-cursor", drift)
-        self.assertEqual(config["recipeCatalogVersion"], 1)
+        self.assertEqual(config["recipeCatalogVersion"], 2)
         self.assertEqual(
             config["recipes"]["grok-xhigh"]["fallbacks"],
             ["grok-xhigh-cursor", "glm-53"],
@@ -1057,6 +1057,30 @@ class RecipeCatalogTests(unittest.TestCase):
             "weekly limit exhausted",
         )
         self.assertEqual(fleet.recipe_catalog_drift(config), [])
+
+    def test_catalog_contains_fable_51_max_recipe(self) -> None:
+        catalog = fleet.load_recipe_catalog()
+
+        self.assertEqual(catalog["version"], 2)
+        self.assertEqual(
+            catalog["usagePools"]["anthropic-fable"], {"state": "available"}
+        )
+        self.assertEqual(
+            catalog["recipes"]["fable-max"],
+            {
+                "kind": "claude",
+                "enabled": True,
+                "usagePool": "anthropic-fable",
+                "fallbacks": [],
+                "args": [
+                    "--dangerously-skip-permissions",
+                    "--model",
+                    "claude-fable-5-1",
+                    "--effort",
+                    "max",
+                ],
+            },
+        )
 
     def test_recipes_cli_sync_then_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
