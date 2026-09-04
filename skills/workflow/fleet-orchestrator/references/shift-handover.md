@@ -27,8 +27,9 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
   operator. Project additions: {{COMMS_ADDITIONS}}.
 - Standing orders live in {{MEMORY_OR_INSTRUCTIONS_LOCATION}}; read them
   before acting.
-- Bindings: seed {{FLEET_SEED}}, fleet config {{FLEET_CONFIG}}, state dir
-  {{FLEET_STATE_DIR}}, captures {{CAPTURES_DIR}}, board {{FLEET_BOARD}}.
+- Bindings: seed {{FLEET_SEED}}, ignored runtime directory
+  {{FLEET_STATE_DIR}}, fleet config {{FLEET_CONFIG}}, captures
+  {{CAPTURES_DIR}}, optional board projection {{FLEET_BOARD_OR_UNSET}}.
 
 ## Monitors — REARM ON TAKEOVER (they died with the last session)
 1. Settle monitor: scripts/fleet-monitor.sh, persistent facility, one launch.
@@ -57,7 +58,9 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
 
 ## Takeover sequence
 1. Run `date`, then self-eval.sh; reconcile every drift line before dispatching.
-2. Rearm all four monitors; confirm heartbeats are fresh.
+2. Rearm the singleton settle monitor first; its startup pass reconciles
+   pending events, settled lanes, and owned lanes missing from inventory.
+   Rearm the other monitors and confirm heartbeats are fresh.
 3. List lanes and adopt them; announce takeover to the coordinator in one prompt.
 4. Confirm the first watchdog tick ran clean.
 ```

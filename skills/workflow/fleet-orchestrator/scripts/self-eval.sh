@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# cspell:ignore isinstance rsplit rstrip
 # Deterministic orchestrator self-evaluation. Run it at EVERY wake (monitor
 # event, watchdog tick, or shift start) and answer three questions against the
 # output: is the fleet moving correctly, what can be improved, what efficiency
@@ -17,7 +18,8 @@ usage() {
   cat <<'EOF'
 Usage: self-eval.sh [--help]
 
-Required bindings: FLEET_SESSION, FLEET_SEED, FLEET_CONFIG, FLEET_STATE_DIR.
+Required bindings: FLEET_SESSION, FLEET_SEED.
+State and fleet config default to <seed>/temp/fleet/.
 Optional: FLEET_BOARD, FLEET_DEADLINE ("YYYY-MM-DD HH:MM" local time),
 FLEET_COORDINATOR, phase-set overrides, staleness thresholds, FLEET_ENV.
 EOF
@@ -59,23 +61,75 @@ PYTHON
 fi
 
 echo "--- lanes ---"
-herdr agent list --session "$FLEET_SESSION" 2>/dev/null | FLEET_SWEPT="$FLEET_SWEPT" python3 -c "
-import json, os, sys
+herdr agent list --session "$FLEET_SESSION" 2>/dev/null |
+  python3 -c '
+import json, sys
+
+config_path, pending_path, coordinator, now_arg = sys.argv[1:]
+
+
+def lane_from_event(event_id):
+    return event_id.rsplit("@", 1)[0] if "@" in event_id else event_id
+
+
+def integer(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 try:
-    agents = json.load(sys.stdin)['result']['agents']
-    swept = set(open(os.environ['FLEET_SWEPT']).read().split())
-    coordinator = os.environ.get('FLEET_COORDINATOR', 'coordinator')
-    working = [a.get('name') or '?' for a in agents if a['agent_status'] == 'working']
-    settled = [a.get('name') or '?' for a in agents
-               if a['agent_status'] in ('done', 'idle')
-               and (a.get('name') or '?') not in swept | {coordinator, '?'}]
-    blocked = [a.get('name') or '?' for a in agents if a['agent_status'] == 'blocked']
-    print(f'working={len(working)}: ' + ', '.join(working))
-    print(f'settled-unswept={len(settled)}: ' + (', '.join(settled) or 'none'))
+    agents = json.load(sys.stdin)["result"]["agents"]
+    with open(config_path) as config_file:
+        config = json.load(config_file)
+    acknowledged_lanes = {
+        event.get("agent")
+        for stream in config.get("streams", [])
+        for event in stream.get("events", [])
+        if isinstance(event, dict) and event.get("eventId") and event.get("agent")
+    }
+
+    pending = []
+    pending_lanes = set()
+    try:
+        with open(pending_path) as pending_file:
+            for raw in pending_file:
+                fields = raw.rstrip("\n").split("\t")
+                if len(fields) < 2 or not fields[0]:
+                    continue
+                fields.extend([""] * (6 - len(fields)))
+                event_id, lane, _state, sent, attempts, target = fields[:6]
+                lane = lane or lane_from_event(event_id)
+                pending_lanes.add(lane)
+                sent_at = integer(sent)
+                age = "unsent" if sent_at <= 0 else f"{max(0, int(now_arg) - sent_at)}s"
+                target = target or "?"
+                pending.append(
+                    f"{event_id}[{target},age={age},attempts={integer(attempts)}]"
+                )
+    except FileNotFoundError:
+        pass
+
+    handled_lanes = acknowledged_lanes | pending_lanes
+    working = [a.get("name") or "?" for a in agents if a["agent_status"] == "working"]
+    settled = []
+    for agent in agents:
+        name = agent.get("name") or "?"
+        seq = agent.get("state_change_seq", 0)
+        event_id = f"{name}@{seq}"
+        if (agent["agent_status"] in ("done", "idle")
+                and name not in {coordinator, "?"} and name not in handled_lanes):
+            settled.append(event_id)
+    blocked = [a.get("name") or "?" for a in agents if a["agent_status"] == "blocked"]
+    print(f"working={len(working)}: " + ", ".join(working))
+    print(f"settled-unswept={len(settled)}: " + (", ".join(settled) or "none"))
+    print(f"pending-delivery={len(pending)}: " + (", ".join(sorted(pending)) or "none"))
     if blocked:
-        print('blocked=' + ', '.join(blocked) + ' - a dialog may be waiting')
+        print("blocked=" + ", ".join(blocked) + " - a dialog may be waiting")
 except Exception as exc:
-    print('LANE-READ-FAILED', exc)"
+    print("LANE-READ-FAILED", exc)' \
+    "$FLEET_CONFIG" "$FLEET_PENDING" "$FLEET_COORDINATOR" "$now"
 
 echo "--- git ---"
 seed_tip="$(git -C "$FLEET_SEED" log --oneline -1 2>/dev/null || echo 'seed-read-failed')"
@@ -171,10 +225,6 @@ def phase_in(phase, group):
     return any(phase == t or phase.startswith(t + '-') for t in group)
 
 
-def lane_key(ticket):
-    return re.sub(r'[^a-z0-9]+', '-', ticket.lower())
-
-
 print('--- streams ---')
 counts = collections.Counter(s.get('phase', '?') for s in streams)
 print(dict(counts))
@@ -238,7 +288,7 @@ def on_seed(sha):
 try:
     agents = json.loads(subprocess.run(['herdr', 'agent', 'list', '--session', session],
                                        capture_output=True, text=True).stdout)
-    lane_names = ' '.join((a.get('name') or '') for a in agents['result']['agents']).lower()
+    lane_names = {a.get('name') for a in agents['result']['agents'] if a.get('name')}
 except Exception:
     lane_names = None
 
@@ -258,7 +308,14 @@ for s in streams:
             drift.append(f"QUEUE-DRIFT: {ticket} phase '{phase}' but no recorded tip is on the "
                          'seed - landedTip must be the post-rebase seed SHA')
     elif phase_in(phase, ACTIVE) and lane_names is not None:
-        if lane_key(ticket) not in lane_names:
+        expected_lanes = {
+            record.get('name')
+            for record in s.get('agents', {}).values()
+            if isinstance(record, dict)
+            and record.get('name')
+            and record.get('dispatchState', '') in {'', 'prompting', 'active'}
+        }
+        if not expected_lanes.intersection(lane_names):
             drift.append(f"ORPHANED: {ticket} phase '{phase}' with no matching lane - "
                          're-dispatch it or re-phase it')
 

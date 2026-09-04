@@ -18,17 +18,20 @@ On every wake:
    - `MONITOR-DOWN` → relaunch the named watcher now. The settle monitor goes
      through the harness's persistent monitor facility, never `&`. The CI
      watcher is armed with the full SHA from the push-in-flight marker.
-   - `BOARD-STALE` → pulse the coordinator to regenerate the board.
+   - `BOARD-STALE` → when an optional board projection is configured, pulse
+     the coordinator to run its adapter and regenerate it.
    - `VELOCITY-STALL` → find the bottleneck and pulse the coordinator with it,
      named.
    - `QUEUE-DRIFT` / `ORPHANED` → order the coordinator to reconcile the fleet
      config against git.
    - `STALE-BLOCKERS` → order the dispatch immediately; push the top unblock
      levers, and escalate only the ones that need a person.
-3. **Handle any wake the monitor surfaced that the loop has not.** Capture the
-   lane to a suffixed file, read the verdict from the agent's own output, sweep
-   the verdict and your ruling to the coordinator, then append the bare lane
-   name to the swept ledger. Routine settles belong to the monitor, not to you.
+3. **Handle any wake the monitor surfaced that the loop has not.** For a
+   `WAKE verdict`, capture with the event ID, read the agent's verdict, and
+   send the ruling to the coordinator. For every other wake, follow its row in
+   [monitor-design.md](monitor-design.md); irretrievably lost output uses the
+   auditable `resolve-event` path there. Routine settles belong to the monitor,
+   not to you.
 4. **Check the push cadence.** All four gates green → push fast-forward only
    and arm the CI watcher in the same turn.
 5. **Fill idle seats.** A coordinator idle with ready work gets a pulse; a

@@ -7,14 +7,47 @@ repeats it.
 
 ## Capture before teardown
 
-1. Read the lane transcript tail to a capture file under the captures
-   directory (`FLEET_CAPTURES_DIR`), named for the lane.
-2. If a capture file already exists, write a suffixed one (`-2`, `-3`). Never
-   overwrite: a re-read that fails after the agent deregistered clobbers the
-   only copy of the output with an error message.
-3. Only then record the verdict and let the lane be torn down.
+1. Run `fleet capture <lane> --event-id <lane@seq> --close`. It reads the lane,
+   atomically saves the transcript tail under `FLEET_CAPTURES_DIR`, records the
+   parsed result, and then closes the tab.
+2. Every capture path is unique. Never overwrite: a re-read that fails after
+   the agent deregistered must not clobber the only copy of the output.
+3. Only then record the verdict and let the lane be torn down. The config
+   event records `capturePath` as durable evidence. The monitor matches the
+   exact `eventId` and `agent`, then requires event `closedAt`, event
+   `teardownResolvedAt`, kind `resolved-lost-output`, or an exact correlated
+   lane marked `closed` or `resolved` before it sweeps the event.
 4. If the agent read fails, read the pane. If the pane is gone, the output is
-   lost — say so and re-dispatch rather than guessing.
+   lost — record it with
+   `fleet resolve-event <agent> --event-id <lane@seq> --reason <text>` before
+   re-dispatching rather than guessing.
+5. A retry of the same event ID and lane does not reread or add a verdict. Add
+   `--close` to finish teardown; every next dispatch on the ticket stays
+   blocked until prior captured tabs are closed. An already-missing tab is
+   idempotent success. Reusing the ID for another lane is an error.
+
+A parse failure stays unacknowledged. Its error, event ID, timestamp, and saved
+capture path are recorded as `lastCaptureFailure`, and the command reports the
+path so the malformed tail can be corrected without losing evidence. A
+successful retry clears that failure record.
+
+Capture and teardown cross separate durable boundaries because the Herdr close
+is external. If the process stops between them, the exact capture preserves
+the result, while the monitor emits `WAKE teardown <event-id>` after its
+default 30-second grace and keeps the event pending until the close is retried
+and recorded. A legacy record without an event ID uses a stable synthetic ID
+that `fleet capture` attaches during recovery. Missing or invalid capture
+timestamps wake immediately. A captured-but-open lane never becomes an
+invisible dispatch blocker.
+
+`resolve-event` is exceptional and auditable. With no capture event, it records
+`resolved-lost-output`, the exact event ID and agent, a timestamp, and the
+supplied reason; it puts the stream on hold and preserves the phase that a
+replacement dispatch must restore. If the exact capture already exists but
+its close cannot be recovered, it records a separate teardown-resolution
+timestamp and reason without pretending the tab was closed. The operator must
+first establish the stated failure because the command does not probe it.
+Malformed or incomplete output stays pending for correction.
 
 ## Reading a verdict
 
@@ -52,6 +85,8 @@ repeats it.
 
 ## Reviewer routing
 
+- Reviewer lanes remain orchestrator-owned: their settles wake this role for
+  capture and ruling, while routine implementer settles go to the coordinator.
 - No model family reviews its own work.
 - Spend the most capable (and most rationed) reviewer where a mistake is
   expensive and hard to reverse: data migrations, security and authorization

@@ -1,36 +1,77 @@
 # Monitor design
 
+<!-- cspell:ignore unacked -->
+
 Four monitors carry the shift. The settle monitor is the load-bearing one;
 the others exist because it, too, can die.
 
 ## The acting monitor
 
-One persistent watcher polls the agent inventory (`name|status|revision` per
-lane) and diffs each poll against the last. It never exits on an event.
+One persistent watcher polls the agent inventory every ten seconds by default
+(`name|status|state_change_seq|spinner` per lane) and diffs each poll against
+the last. It never exits on an event. A healthy poll writes only local state
+and emits exactly zero bytes on stdout and stderr, hence no model-visible
+tokens when the harness reads process output.
 
-**It acts on routine events itself.** A non-verdict lane that settles gets a
-sweep prompt sent straight to the coordinator, its name appended to the swept
-ledger, and a line in the monitor log. The orchestrator is not woken and
-learns about it at the next self-eval.
+**It persists every settle before notification.** Each settle enters the
+pending queue under its immutable `lane@state_change_seq` ID. Routine events
+from one poll are batched into one terse coordinator prompt; verdict events
+produce one terse orchestrator wake. Transport success proves delivery only:
+either kind remains pending until `fleet.json` records an event with the same
+`eventId` and `agent`, then records a close, lost-output resolution, or
+auditable teardown resolution. Only then does the monitor append the ID to the
+swept ledger. A capture that remains
+open past the configurable 30-second teardown grace emits a terse teardown
+wake carrying its exact event ID and stays pending until close; the
+already-captured event is not redelivered to the coordinator. Lost teardown
+wakes retry on the same acknowledgement backoff. Missing, malformed, or
+future-dated capture timestamps bypass the grace.
 
-**It wakes the orchestrator only for judgment:**
+Before each notification side effect, the monitor records its epoch and
+increments its attempt count. A crash after Herdr accepts a prompt therefore
+cannot cause an immediate duplicate turn; a crash just before submission only
+delays the durable retry. `herdr agent prompt` errors can be advisory after the
+prompt was accepted, so failed and accepted-but-unacknowledged attempts stay
+pending. Retry delay grows with the attempt count:
+`FLEET_ACK_TIMEOUT_SECONDS × 1, 2, 4, 8`, capped at `8×`. An overdue
+coordinator acknowledgement emits one compact wake even while the coordinator
+is working, but the actual retry waits until that lane is not working to avoid
+queueing duplicate turns. Repeated identical failures are silent until
+recovery resets their deduplication key. This is at-least-once delivery, so
+capture by event ID must be idempotent.
 
-| Wake | Trigger | Why it needs a person |
-|------|---------|----------------------|
-| verdict lane settled | lane name matches a verdict glob | a verdict must be read and ruled on |
-| BLOCKED | same lane blocked on two consecutive polls | an approval dialog is waiting |
-| VANISHED | lane disappeared while working or done, unswept | teardown without capture; output may be lost |
-| SEED-MOVED | seed tip changed | something landed; push cadence and queue change |
-| COORDINATOR-STALL | coordinator working, transition sequence frozen past the threshold, and no spinner seen in any poll of that window | the loop is wedged, not busy |
-| inventory unreadable | inventory call failed or returned nothing | the fleet may be gone |
+**It wakes the orchestrator only for action:**
+
+| Wake | Trigger | Recovery |
+|------|---------|----------|
+| `WAKE verdict <event-id>…` | config records the lane's role as `review` | capture and rule under [verdict-discipline.md](verdict-discipline.md) |
+| `WAKE blocked <lane>` | same lane blocked on two consecutive polls | read the visible pane and clear or escalate the dialog |
+| `WAKE vanished <event-id>…` | owned lane disappeared while working, done, or idle, unswept | try agent then pane capture; use auditable resolution below only if both fail |
+| `WAKE seed <old> <new>` | seed tip changed | run self-eval and re-evaluate the landing and push train |
+| `WAKE coordinator missing` | readable inventory contains worker lanes but no coordinator | inspect or restart the coordinator lane before relying on routine delivery |
+| `WAKE coordinator-stall <seconds>` | coordinator sequence froze with no spinner for the stall window | inspect its visible pane and recover or restart its loop |
+| `WAKE inventory` | inventory call failed or returned no lanes | restore a readable session inventory, then let startup reconciliation run |
+| `WAKE delivery <event-id>…` | coordinator prompt command failed | inspect the target and pending record; preserve it for timed retry |
+| `WAKE unacked <event-id>…` | coordinator acknowledgement is overdue | inspect the target and config; preserve it for backoff retry |
+| `WAKE teardown <event-id>…` | a capture exceeded its teardown grace without a durable close | retry `fleet capture <lane> --event-id <id> --close`; a legacy record receives the stable `<lane>@captured` ID; record an auditable resolution for an unrecoverable orphan |
+| `WAKE state <target>` | config, heartbeat, pending queue, or ledger cannot be read or written | repair the named state, then let the next poll reconcile it |
 
 Rules the design depends on:
 
-- **Settle is a transition**, `working` → `done`/`idle`, never a status
-  snapshot. Agents that poll an inbox report `working` forever and their
-  revision counter climbs regardless of progress, so a snapshot both invents
-  settles and hides them. Where a fleet has a stronger liveness signal than
-  status (a work lock, a claim file), prefer it.
+- **Settle identity comes from the transition sequence.** Detect entry into
+  `done`/`idle`, including a lane first observed already settled and
+  `blocked` → `done`. Reconcile the durable pending queue every poll, rather
+  than relying on two adjacent samples for retry. Where a fleet has a stronger
+  liveness signal than status, prefer it.
+- **Durable dispatch state exposes startup gaps.** `fleet dispatch` persists
+  `prompting` before prompt submission and `active` after confirmed receipt.
+  The monitor owns both states. Once inventory is readable, its startup pass
+  turns a missing owned lane into `<lane>@missing`; it also rechecks every
+  settled snapshot, so a lane first seen idle while its record is still being
+  advanced is not forgotten.
+- **Role comes from the config.** A recorded `review` role routes to the
+  orchestrator and `impl` routes to the coordinator. Lane-name globs are only
+  a compatibility fallback for older records with no role.
 - **Blocked is debounced by one poll.** A single blocked reading is usually a
   lane between turns.
 - **A stall needs two dead signals, and the revision field is not one of
@@ -50,18 +91,59 @@ Rules the design depends on:
   sightings is a healthy long turn — log it and re-arm silently. Re-arm after a
   wake too, so the next window is judged on its own evidence rather than
   re-firing every poll.
-- **The swept ledger is the deduplication key.** It is append-only and
-  trimmed, and a lane name in it never fires again — so dispatch fresh,
-  role-and-ticket-derived lane names per cycle rather than reusing one name
-  across attempts.
+- **The swept ledger contains immutable event IDs.** It is append-only and is
+  written only after durable acknowledgement. Dispatch also uses a fresh,
+  numbered lane name per cycle, so transcripts and config events cannot be
+  confused across a bounce or re-review.
 - **Baseline on the first poll.** Lanes that settled while no monitor was
-  armed are handled immediately: routine ones swept, verdict ones woken. A
+  armed are handled immediately: routine ones queued, verdict ones woken. A
   monitor armed mid-shift must never start by forgetting the backlog.
-- **Coordinator idleness is an event too.** Idle past the threshold with
-  unswept settled lanes gets a direct pulse, rate-limited so a wedged
-  coordinator is not spammed.
-- **A heartbeat file every poll.** It is the only proof the monitor is alive,
-  and self-eval reads it.
+- **A heartbeat follows a readable inventory.** It is the proof that the
+  monitor is alive and can still see the fleet; self-eval treats a 30-second
+  stale heartbeat as down by default.
+- **Seed visibility is independent.** A failed seed-tip read emits one
+  `WAKE state seed`, preserves the last readable tip, and rearms silently on
+  recovery; a real tip change during the blind window still produces one seed
+  wake.
+- **Runtime state is local and ignored.** Config, pending/swept ledgers,
+  fault deduplication, heartbeats, logs, and captures default to
+  `<seed>/temp/fleet/`. Do not run `git clean -fdx` while a fleet is live.
+- **One watcher owns the ledgers.** A process-lifetime POSIX record lock admits
+  one monitor. The kernel releases it on normal exit, `SIGKILL`, or host crash;
+  stale PID text in the persistent lock file is diagnostic only and never
+  blocks restart. Never delete or replace `FLEET_MONITOR_LOCK_FILE` while a
+  monitor may be live, because a new inode would admit a second owner.
+
+### Vanished-event recovery
+
+Reconcile pending acknowledgements before disappearance detection, so a lane
+captured and closed between polls is not reported as vanished. If a lane
+disappears while its settle is pending, keep the same immutable event ID,
+change its state and target to `vanished`, and make its wake immediately due.
+
+## Pending-event record and exceptional resolution
+
+Each tab-separated pending row stores event ID, lane, observed state,
+last-send epoch, attempt count, and delivery target. Self-eval shows its age,
+attempts, and target without consuming model tokens on a healthy monitor poll.
+If `fleet.json` is unreadable, the monitor emits one state wake and suppresses
+delivery until it can check for an existing acknowledgement again.
+If the pending queue is unreadable, malformed, or contains a duplicate event
+ID or lane, the monitor emits one `WAKE state pending` and fails closed before
+adding or delivering anything. Recovery rearms that alarm for a later outage.
+
+If both agent and pane reads fail, run
+`fleet resolve-event <agent> --event-id <lane@seq> --reason <text>`. This
+exceptional command writes an auditable `resolved-lost-output` event with the
+exact ID and agent; the monitor then acknowledges it and moves it from pending
+to swept normally. It is not a substitute for a malformed verdict or a missed
+read attempt. It puts the stream on hold and preserves its prior phase;
+re-dispatching the lost role restores the appropriate phase. Never append a
+bare lane name to the ledger. When the capture exists but its close cannot be
+recovered, the same command instead records an auditable
+`teardownResolvedAt` and reason on the exact event. Legacy bare rows are
+retained as inert history, but never suppress delivery: only an exact event in
+`fleet.json` is trusted.
 
 ## Failure history behind these rules
 
@@ -71,10 +153,15 @@ Rules the design depends on:
   sat unprocessed. A persistent watcher has no restart step to forget.
 - **Every routine settle used to cost a main-loop round.** Waking a person to
   forward a message is waste; the acting design forwards it and loses nothing.
+- **Transport success used to masquerade as processing success.** The monitor
+  discarded `herdr agent prompt` failures and marked lanes swept anyway. A
+  crash, rejection, or swallowed prompt could therefore lose a settle
+  forever. Durable pending events plus config acknowledgements close that
+  hole.
 - **Never launch a monitor with `&`.** Shell jobs launched that way were
   orphaned twice: the job lived outside the harness's task list, then died
-  with no heartbeat and no notice. Use the harness's persistent monitor facility, one
-  launch, and check the heartbeat afterwards.
+  with no heartbeat and no notice. Use the harness's persistent monitor
+  facility, one launch, and check the heartbeat afterwards.
 - **An operator nudge is an alarm.** If a person tells you an agent settled or
   a pipeline is red, the monitor failed. Fix the monitor before answering the
   nudge.

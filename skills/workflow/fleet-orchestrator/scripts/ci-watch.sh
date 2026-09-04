@@ -15,7 +15,8 @@ usage() {
   cat <<'EOF'
 Usage: ci-watch.sh <pushed-sha> [--help]
 
-Required bindings: FLEET_SEED, FLEET_STATE_DIR.
+Required binding: FLEET_SEED.
+Runtime state defaults to <seed>/temp/fleet/.
 Optional: FLEET_CI_POLLS, FLEET_CI_POLL_SECONDS, FLEET_CI_RETRIGGER_WORKFLOW,
 FLEET_CI_RETRIGGER_REF, FLEET_ENV.
 EOF

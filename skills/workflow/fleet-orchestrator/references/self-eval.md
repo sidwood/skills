@@ -16,12 +16,13 @@ is a finding you will meet again, larger.
 | Section | Alarm | Action, same turn |
 |---------|-------|-------------------|
 | deadline | — | re-plan the remaining work if it does not fit |
-| lanes | `settled-unswept`, `blocked` | capture and rule, or clear the dialog |
+| lanes | `settled-unswept` | recover or rearm the settle monitor; `impl` routes to the coordinator and `review` routes to the orchestrator |
+| lanes | `blocked` | clear the waiting dialog |
 | lanes | `LANE-READ-FAILED` | the session or inventory is broken; recover it before anything else |
 | git | `unpushed` > 0 | check the push cadence gates |
 | CI | a non-success conclusion | stop the train, fix forward |
 | watcher health | `MONITOR-DOWN` | relaunch the named watcher immediately |
-| board currency | `BOARD-STALE` | pulse the coordinator to regenerate the board |
+| optional board projection | `BOARD-STALE` | when `FLEET_BOARD` is set, pulse the coordinator to run its adapter and regenerate the projection |
 | streams | phase counts | look for a phase that is not moving |
 | backlog velocity | `VELOCITY-STALL` | find the bottleneck and pulse the coordinator with it, by name |
 | blocked column | `STALE-BLOCKERS` | order the dispatch; the blocker already landed |
@@ -40,16 +41,26 @@ pushed — are what put this section in the script.
 
 The check is three assertions:
 
-- A **queued** item's tip must NOT be an ancestor of the seed tip. If it is,
+- A **queued** item's tip must NOT be an ancestor of the seed tip. Queued means
+  awaiting landing after approval; `ready` and `review-ready` are not landing
+  queue phases. If a queued tip is already on the seed,
   the item already landed and its phase is stale (`QUEUE-DRIFT`).
 - A **landed** item's recorded tip MUST be an ancestor of the seed tip. If it
   is not, the recorded tip is a pre-rebase clone SHA. `landedTip` is always
   the post-rebase **seed** SHA captured at land time (`QUEUE-DRIFT`).
-- An **active** item must have a lane whose name derives from its ticket. No
+- An **active** item must have one of its exact current `agents.*.name` values
+  in the live inventory. Never infer ownership from a ticket-name substring:
+  derived Herdr names can be truncated and include a stable hash. No exact
   lane means the work is neither running nor queued (`ORPHANED`).
 
 Read the printed `train queue:` line instead of remembering one. Where the
 script and your memory disagree, the script is right.
+
+The lane section also prints every pending event as
+`event-id[target,age=…,attempts=…]`. Pending is handled-but-unacknowledged, not
+`settled-unswept`; use its target, last-send age, attempt count, and the
+`1×/2×/4×/8×` backoff schedule to diagnose delivery without polling the
+worker again.
 
 ## Phase vocabulary
 
