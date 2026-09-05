@@ -12,6 +12,9 @@ All three templates open with the config's `deploymentContext` block.
 Repository seed: {{SEED_PATH}} @ {{SEED_TIP}} (do not touch the seed)
 Working copy: {{CLONE_PATH}}
 Branch: {{BRANCH}} (created from seed tip)
+Use this verified BC checkout; only the coordinator creates additional
+checkouts through the dotfiles BC tools. Do not clone, add worktrees, or
+copy repositories yourself.
 
 DEPLOYMENT CONTEXT ({{USER}}, non-negotiable): {{DEPLOYMENT_CONTEXT}}
 
@@ -49,6 +52,8 @@ requests.
 HANDOFF
 Repository: {{SEED_PATH}}
 Working copy: {{CLONE_PATH}} on branch {{BRANCH}}
+Use this verified BC checkout; request any additional checkout from the
+coordinator through the dotfiles BC tools.
 Review range: {{RANGE}}
   First pass: {{SEED_TIP}}..{{BRANCH_TIP}} — the only full-range pass.
   Re-review: {{PRE_FIX_TIP}}..{{BRANCH_TIP}} — the bounce fix commits ONLY;
@@ -93,6 +98,8 @@ alone → APPROVE: yes (list under Deferred).
 {{TICKET}} bounce — review {{N}} @ {{REVIEWED_TIP}}: APPROVE: no.
 Bounce {{COUNT}} of at most {{CAP}}. The next review verifies this fix and
 its regressions only.
+Use the assigned verified BC checkout; any additional checkout must be
+created by the coordinator through the dotfiles BC tools.
 
 FIX ONLY ({{TICKET}} land scope):
 {{FINDINGS_VERBATIM_WITH_SEVERITY_TAG_AND_LOCATION}}

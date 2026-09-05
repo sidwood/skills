@@ -54,6 +54,7 @@
     "onepassword",
     "parentheticals",
     "pipefail",
+    "postadd",
     "pretrained",
     "pretraining",
     "pycache",
@@ -74,6 +75,8 @@
     "unsourced",
     "weightroom",
     "workstreams",
+    "worktree",
+    "worktrees",
     "xhigh"
   ]
 }

@@ -35,6 +35,21 @@ directory; overrides and optional bindings live in
 Export them, or point `FLEET_ENV` at a file that sets them
 (`scripts/fleet-orchestrator.env.example`).
 
+## Branch checkout enforcement
+
+Every fleet checkout uses Sid's dotfiles BC tools. The coordinator runs
+`fleet checkout TICKET`; the orchestrator verifies `fleet checkouts check`
+on adoption and every watchdog wake. New checkouts live beside the seed,
+never inside `temp/fleet`. Read the coordinator's
+[checkout procedure](../fleet-coordinator/references/branch-checkouts.md)
+before creating, adopting, or cleaning up a fleet.
+
+`CHECKOUT-DRIFT` blocks the next dispatch on the affected ticket. Repair the
+checkout through BC tools or obtain an explicit continuation ruling for an
+existing clone; do not invent `bc.source`, move an active checkout, suppress
+the check, or replace BC with raw Git/copy commands. Only the operator can
+approve a legacy layout continuation; it never authorizes a new clone.
+
 ## Workspace layout
 
 - Set the workspace label to the basename of its cwd, such as

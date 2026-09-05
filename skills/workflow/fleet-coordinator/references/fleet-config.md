@@ -24,6 +24,10 @@ fallback order, preserves every valid usage-pool state and recipe `enabled`
 switch, and leaves additional project recipes untouched. Dispatch refuses to
 start while the canonical catalog is missing or drifted.
 
+Checkout creation and validation use `fleet checkout TICKET` and
+`fleet checkouts check`; see [branch checkouts](branch-checkouts.md) for
+receipts and the exact operator-authorized legacy continuation schema.
+
 ## Schema
 
 ```jsonc
@@ -63,8 +67,8 @@ start while the canonical catalog is missing or drifted.
     {
       "ticket": "T094.1",
       "title": "card title for prompts",
-      "branch": "fleet/t094-1",
-      "checkout": "/abs/path/to/clone",
+      "branch": "the-stream-branch",
+      "checkout": "/abs/path/to/seed-repo.the-stream-branch",
       "implRecipe": "grok-xhigh",
       "reviewRecipe": "opus-max",
       "phase": "implementing | review-N | bounce-N | verdict-pending | approved | landed | hold",

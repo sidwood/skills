@@ -17,6 +17,7 @@ is a finding you will meet again, larger.
 |---------|-------|-------------------|
 | Herdr topology | `WORKSPACE-DRIFT` | make `fleet.json`, `FLEET_WORKSPACE`, and the optional shared `FLEET_SESSION` agree before dispatching or trusting inventory |
 | recipe catalog | `RECIPE-DRIFT` | order `fleet recipes sync`; no dispatch is allowed until `fleet recipes check` passes |
+| branch checkouts | `CHECKOUT-DRIFT` | stop affected dispatches; repair through BC tools, preserve active work, and obtain operator authority for any exact legacy continuation |
 | deadline | — | re-plan the remaining work if it does not fit |
 | lanes | `settled-unswept` | recover or rearm the settle monitor; `impl` routes to the coordinator and `review` routes to the orchestrator |
 | lanes | `blocked` | clear the waiting dialog |

@@ -41,6 +41,24 @@ you.
    dispatch. Severity is judged against that context, never against an
    imagined production load.
 
+## Branch checkouts
+
+Use Sid's dotfiles BC tools for every checkout: `git bc-add` to create,
+`git bc-list` to inspect, and `git bc-rm` / `git bc-prune` to remove eligible
+clones. Read each tool's `-h` before use. Never substitute `git clone`,
+`git worktree`, or a repository copy when the tool is missing or fails.
+
+Before first dispatch, run `fleet checkout TICKET`, then
+`fleet checkouts check`. New checkouts are siblings of the seed; `temp/fleet`
+holds operational records, not clones. Dispatch must verify the clone's
+branch, Git directory, and `bc.source` chain before creating any agent state
+or Herdr tab. A path in JSON is not proof that a checkout follows this rule.
+
+For creation, existing fleets, and cleanup, read
+[references/branch-checkouts.md](references/branch-checkouts.md).
+*Done when:* the BC creation receipt or existing-clone verification is saved,
+the checkout check passes, and the prompt uses that verified path.
+
 ## Workspace layout
 
 - Set the workspace label to the basename of its cwd, such as
@@ -176,6 +194,8 @@ Executable helpers live in `scripts/fleet.py`. Config precedence is
 | Capture agent output (before tab close) | `fleet capture <agent-name> [--event-id <lane@seq>] [--capture-file <saved-transcript>] [--close]` |
 | Acknowledge irretrievably lost output or teardown | `fleet resolve-event <agent-name> --event-id <lane@seq> --reason <text>` |
 | Install or verify all launch recipes and fallback routes | `fleet recipes sync`; `fleet recipes check` |
+| Create the ticket checkout with BC tools | `fleet checkout <ticket>` |
+| Verify checkout layout and BC provenance | `fleet checkouts check` |
 | Fleet snapshot and next action | `fleet state` |
 | Apply verdict table to newest capture | `fleet verdict <ticket> [--commit]` |
 | Open tab, start agent, send prompt | `fleet dispatch <ticket> <impl\|review> --prompt-file <file>` |

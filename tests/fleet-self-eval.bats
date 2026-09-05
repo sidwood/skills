@@ -309,3 +309,28 @@ JSON
   [[ "$output" != *"QUEUE-DRIFT: READY-TICKET"* ]]
   [[ "$output" == *"train queue: (empty)"* ]]
 }
+
+@test "new nested checkout is an orchestrator alarm" {
+  cat > "$FLEET_FILE" <<JSON
+{"seed":"$SEED","workspace":"w1","streams":[{
+  "ticket":"T9",
+  "phase":"ready",
+  "branch":"t9",
+  "checkout":"$SEED/temp/fleet/clones/T9",
+  "agents":{}
+}]}
+JSON
+  cat > "$FAKE_BIN/git-bc-add" <<'BC'
+#!/usr/bin/env bash
+exit 99
+BC
+  chmod +x "$FAKE_BIN/git-bc-add"
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CHECKOUT-DRIFT:"* ]]
+  [[ "$output" == *"T9: CHECKOUT-DRIFT: planned checkout must use BC default path"* ]]
+  [ ! -e "$SEED/temp/fleet/clones/T9" ]
+  [ ! -e "$SEED.t9" ]
+}

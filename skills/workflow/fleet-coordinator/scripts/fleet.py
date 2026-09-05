@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2239,11 +2240,193 @@ def validate_dispatch_phase(stream: dict[str, Any], role: str) -> None:
     )
 
 
+def require_bc_tool() -> Path:
+    executable = shutil.which("git-bc-add")
+    if not executable:
+        raise FleetError("CHECKOUT-DRIFT: git-bc-add is missing from PATH; install the dotfiles BC tools")
+    return Path(executable).resolve()
+
+
+def checkout_path(value: str, label: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise FleetError(f"CHECKOUT-DRIFT: {label} must be an absolute local path")
+    return path.resolve()
+
+
+def require_separate_clone(path: Path) -> None:
+    git_dir = path / ".git"
+    if not git_dir.is_dir() or git_dir.is_symlink():
+        raise FleetError(f"CHECKOUT-DRIFT: {path} must be a separate clone with its own .git directory")
+    top = Path(git_output(path, "rev-parse", "--show-toplevel")).resolve()
+    actual = Path(git_output(path, "rev-parse", "--absolute-git-dir")).resolve()
+    common = Path(git_output(path, "rev-parse", "--git-common-dir"))
+    if not common.is_absolute():
+        common = path / common
+    if top != path or actual != git_dir or common.resolve() != git_dir:
+        raise FleetError(f"CHECKOUT-DRIFT: {path} uses a shared or redirected git directory")
+
+
+def validate_checkout(config: dict[str, Any], stream: dict[str, Any]) -> dict[str, Any]:
+    require_bc_tool()
+    seed = checkout_path(config["seed"], "seed")
+    checkout = checkout_path(stream.get("checkout", ""), "checkout")
+    branch = stream.get("branch", "")
+    if checkout == seed:
+        raise FleetError("CHECKOUT-DRIFT: agents cannot use the seed checkout")
+    require_separate_clone(seed)
+    require_separate_clone(checkout)
+    if git_output(checkout, "symbolic-ref", "--short", "HEAD") != branch:
+        raise FleetError(f"CHECKOUT-DRIFT: {checkout} is not on configured branch {branch!r}")
+
+    legacy = stream.get("checkoutLegacyLayout", {})
+    legacy_allowed = (
+        isinstance(legacy, dict)
+        and legacy.get("checkout") == str(checkout)
+        and legacy.get("branch") == branch
+        and legacy.get("seed") == str(seed)
+        and isinstance(legacy.get("operatorAuthority"), str)
+        and bool(legacy["operatorAuthority"].strip())
+    )
+    sibling = checkout.parent == seed.parent and checkout.name.startswith(seed.name + ".")
+    if not sibling and not legacy_allowed:
+        raise FleetError(f"CHECKOUT-DRIFT: {checkout} must be a {seed.name}.* sibling of the seed")
+
+    chain: list[str] = []
+    current = checkout
+    visited = {checkout}
+    while current != seed:
+        result = run_cmd(["git", "-C", str(current), "config", "--local", "--get", "bc.source"], check=False)
+        if result.returncode != 0 or not result.stdout.strip():
+            raise FleetError(f"CHECKOUT-DRIFT: {current} has no local bc.source leading to {seed}")
+        source = checkout_path(result.stdout.strip(), "bc.source")
+        if source in visited:
+            raise FleetError("CHECKOUT-DRIFT: cyclic bc.source chain")
+        require_separate_clone(source)
+        visited.add(source)
+        chain.append(str(source))
+        current = source
+
+    base = stream.get("baseTip")
+    if not base:
+        raise FleetError("CHECKOUT-DRIFT: baseTip is missing; establish the approved seed base")
+    base = git_output(checkout, "rev-parse", "--verify", f"{base}^{{commit}}")
+    result = run_cmd(["git", "-C", str(checkout), "merge-base", "--is-ancestor", base, "HEAD"], check=False)
+    if result.returncode:
+        raise FleetError(f"CHECKOUT-DRIFT: baseTip is not an ancestor of {checkout} HEAD")
+    if not any(run_cmd(["git", "-C", source, "merge-base", "--is-ancestor", base, "HEAD"],
+                       check=False).returncode == 0 for source in chain):
+        raise FleetError("CHECKOUT-DRIFT: baseTip is not an ancestor of any BC source HEAD")
+    return {"checkout": str(checkout), "seed": str(seed), "branch": branch,
+            "baseTip": base, "sourceChain": chain, "legacyLayout": not sibling}
+
+
+def has_recorded_checkout(stream: dict[str, Any]) -> bool:
+    if any(stream.get(key) for key in ("checkoutLegacyLayout", "checkoutReceipt", "checkoutVerification", "agents")):
+        return True
+    return any(next_dispatch_number(stream, role) > 1
+               for role in stream.get("dispatchCounters", {}))
+
+
+def cmd_checkout(args: argparse.Namespace) -> int:
+    config_path = config_path_from_args(args)
+    config = load_config(config_path)
+    stream = find_stream(config, args.ticket)
+    executable = require_bc_tool()
+    seed = checkout_path(config["seed"], "seed")
+    require_separate_clone(seed)
+    branch = stream.get("branch", "")
+    if not branch or run_cmd(["git", "check-ref-format", "--branch", branch], check=False).returncode:
+        raise FleetError("CHECKOUT-DRIFT: configure a valid branch before creating a checkout")
+    target = seed.with_name(seed.name + "." + branch.replace("/", "-"))
+    configured = stream.get("checkout")
+    if configured and checkout_path(configured, "checkout") != target:
+        existing = checkout_path(configured, "checkout")
+        if not existing.exists():
+            raise FleetError(f"CHECKOUT-DRIFT: new checkout must use the BC default path {target}")
+        target = existing
+    command = ["git", "bc-add", "--offline", str(seed), branch]
+    candidate = dict(stream, checkout=str(target))
+    if target.exists():
+        identity = validate_checkout(config, candidate)
+        if not args.dry_run:
+            stream["checkout"] = str(target)
+            stream["checkoutVerification"] = dict(identity, verifiedAt=utc_now_iso())
+            save_config(config_path, config)
+        print(f"CHECKOUT-OK: verified existing {target}")
+        return 0
+    if has_recorded_checkout(stream):
+        raise FleetError("CHECKOUT-DRIFT: cannot recreate a missing recorded checkout; preserve history and reconcile it first")
+    if any(record and record.get("dispatchState") not in {"closed", "resolved"}
+           for record in stream.get("agents", {}).values()):
+        raise FleetError("CHECKOUT-DRIFT: cannot create a replacement for an active lane")
+    base = git_tip(seed)
+    if stream.get("baseTip") and stream["baseTip"] != base:
+        raise FleetError("CHECKOUT-DRIFT: seed moved; reconcile baseTip before checkout creation")
+    for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
+        existing_ref = run_cmd(["git", "-C", str(seed), "rev-parse", "--verify", ref], check=False)
+        if existing_ref.returncode == 0 and existing_ref.stdout.strip() != base:
+            raise FleetError(f"CHECKOUT-DRIFT: {ref} differs from the approved seed tip")
+    if args.dry_run:
+        print(shlex.join(command))
+        return 0
+    seed_branch = git_output(seed, "symbolic-ref", "--short", "HEAD")
+    result = run_cmd(command)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    candidate["baseTip"] = base
+    identity = validate_checkout(config, candidate)
+    if git_tip(target) != base or git_tip(seed) != base or git_output(seed, "symbolic-ref", "--short", "HEAD") != seed_branch:
+        raise FleetError("CHECKOUT-DRIFT: BC creation changed the approved base or seed branch; preserve and inspect the checkout")
+    stream.update(checkout=str(target), baseTip=base)
+    stream["checkoutReceipt"] = dict(identity, tool="git bc-add", executable=str(executable),
+                                     command=command, createdAt=utc_now_iso())
+    save_config(config_path, config)
+    print(f"CHECKOUT-OK: created {target}")
+    return 0
+
+
+def cmd_checkouts(args: argparse.Namespace) -> int:
+    config = load_config(config_path_from_args(args))
+    require_bc_tool()
+    errors: list[str] = []
+    for stream in config.get("streams", []):
+        ticket = stream.get("ticket", "?")
+        active = any(record and record.get("dispatchState") not in {"closed", "resolved"}
+                     for record in stream.get("agents", {}).values())
+        if stream.get("phase") in {"done", "complete", "landed", "cancelled", "canceled", "killed"} and not active:
+            continue
+        path = stream.get("checkout")
+        if not active and (not path or not Path(path).expanduser().exists()) and not has_recorded_checkout(stream):
+            seed = checkout_path(config["seed"], "seed")
+            branch = stream.get("branch", "")
+            expected = seed.with_name(seed.name + "." + branch.replace("/", "-"))
+            if path and checkout_path(path, "checkout") != expected:
+                errors.append(f"{ticket}: CHECKOUT-DRIFT: planned checkout must use BC default path {expected}")
+            elif not branch or run_cmd(["git", "check-ref-format", "--branch", branch], check=False).returncode:
+                errors.append(f"{ticket}: CHECKOUT-DRIFT: planned checkout needs a valid branch")
+            else:
+                print(f"CHECKOUT-NOT-CREATED: {ticket}; fleet checkout {ticket} before dispatch")
+            continue
+        try:
+            identity = validate_checkout(config, stream)
+            label = "CHECKOUT-LEGACY-LAYOUT" if identity["legacyLayout"] else "CHECKOUT-OK"
+            print(f"{label}: {ticket} {identity['checkout']}")
+        except FleetError as exc:
+            errors.append(f"{ticket}: {exc}")
+    if errors:
+        raise FleetError("\n".join(errors))
+    return 0
+
+
 def cmd_dispatch(args: argparse.Namespace) -> int:
     config_path = config_path_from_args(args)
     config = load_config(config_path)
     require_recipe_catalog(config)
     stream = find_stream(config, args.ticket)
+    validate_checkout(config, stream)
     role = args.role
     dispatch_number = next_dispatch_number(stream, role)
     name = derive_agent_name(
@@ -2498,6 +2681,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_verdict.add_argument("--commit", action="store_true")
     p_verdict.set_defaults(func=cmd_verdict)
 
+    p_checkout = sub.add_parser("checkout", help="Create a BC sibling checkout", parents=[common])
+    p_checkout.add_argument("ticket")
+    p_checkout.set_defaults(func=cmd_checkout)
+
+    p_checkouts = sub.add_parser("checkouts", help="Validate fleet BC checkouts", parents=[common])
+    p_checkouts.add_argument("checkout_action", choices=["check"])
+    p_checkouts.set_defaults(func=cmd_checkouts)
+
     p_dispatch = sub.add_parser("dispatch", help="Open tab, start agent, send prompt", parents=[common])
     p_dispatch.add_argument("ticket")
     p_dispatch.add_argument("role", choices=["impl", "review"])
@@ -2518,7 +2709,7 @@ def build_parser() -> argparse.ArgumentParser:
 def mutates_config(args: argparse.Namespace) -> bool:
     if getattr(args, "dry_run", False):
         return False
-    if args.command in {"capture", "resolve-event", "dispatch", "land"}:
+    if args.command in {"capture", "resolve-event", "dispatch", "checkout", "land"}:
         return True
     if args.command == "recipes":
         return args.recipe_action == "sync"

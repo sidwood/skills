@@ -150,6 +150,9 @@ class ParseCaptureTests(unittest.TestCase):
 
 class CaptureTests(unittest.TestCase):
     def setUp(self) -> None:
+        checkout_guard = mock.patch("fleet.validate_checkout")
+        checkout_guard.start()
+        self.addCleanup(checkout_guard.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.checkout = Path(self.tmp.name) / "clone"

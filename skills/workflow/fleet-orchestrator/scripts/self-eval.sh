@@ -5,7 +5,7 @@
 # output: is the fleet moving correctly, what can be improved, what efficiency
 # is available. Every finding becomes an action in the same turn.
 #
-# Alarm words are grep-able on purpose: WORKSPACE-DRIFT, RECIPE-DRIFT, MONITOR-DOWN,
+# Alarm words are grep-able on purpose: WORKSPACE-DRIFT, RECIPE-DRIFT, CHECKOUT-DRIFT, MONITOR-DOWN,
 # BOARD-STALE, VELOCITY-STALL, STALE-BLOCKERS, QUEUE-DRIFT, ORPHANED,
 # CAPACITY-STALL, CAPACITY-RECOVERY-FAILED. See references/self-eval.md for
 # the action each one demands.
@@ -89,6 +89,13 @@ if recipe_check="$(python3 "$fleet_cli" --config "$FLEET_CONFIG" recipes check 2
   echo "$recipe_check"
 else
   echo "$recipe_check"
+fi
+
+echo "--- branch checkouts ---"
+if checkout_check="$(python3 "$fleet_cli" --config "$FLEET_CONFIG" checkouts check 2>&1)"; then
+  echo "$checkout_check"
+else
+  echo "CHECKOUT-DRIFT: $checkout_check"
 fi
 
 if [ -n "${FLEET_DEADLINE:-}" ]; then

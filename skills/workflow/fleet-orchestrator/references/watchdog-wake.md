@@ -18,6 +18,8 @@ On every wake:
    - `MONITOR-DOWN` → relaunch the named watcher now. The settle monitor goes
      through the harness's persistent monitor facility, never `&`. The CI
      watcher is armed with the full SHA from the push-in-flight marker.
+   - `CHECKOUT-DRIFT` → stop the affected next dispatch; have the coordinator
+     repair BC tooling/provenance/layout without moving or deleting active work.
    - `BOARD-STALE` → when an optional board projection is configured, pulse
      the coordinator to run its adapter and regenerate it.
    - `VELOCITY-STALL` → find the bottleneck and pulse the coordinator with it,
