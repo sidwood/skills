@@ -1045,7 +1045,7 @@ class RecipeCatalogTests(unittest.TestCase):
         drift = fleet.sync_recipe_catalog(config)
 
         self.assertIn("missing recipe grok-xhigh-cursor", drift)
-        self.assertEqual(config["recipeCatalogVersion"], 2)
+        self.assertEqual(config["recipeCatalogVersion"], 3)
         self.assertEqual(
             config["recipes"]["grok-xhigh"]["fallbacks"],
             ["grok-xhigh-cursor", "glm-53"],
@@ -1061,7 +1061,7 @@ class RecipeCatalogTests(unittest.TestCase):
     def test_catalog_contains_fable_51_max_recipe(self) -> None:
         catalog = fleet.load_recipe_catalog()
 
-        self.assertEqual(catalog["version"], 2)
+        self.assertEqual(catalog["version"], 3)
         self.assertEqual(
             catalog["usagePools"]["anthropic-fable"], {"state": "available"}
         )
@@ -1079,6 +1079,36 @@ class RecipeCatalogTests(unittest.TestCase):
                     "--effort",
                     "max",
                 ],
+            },
+        )
+
+    def test_catalog_contains_proven_provider_specific_recipes(self) -> None:
+        catalog = fleet.load_recipe_catalog()
+
+        self.assertEqual(
+            catalog["usagePools"]["cursor-kimi"], {"state": "available"}
+        )
+        self.assertEqual(
+            catalog["recipes"]["kimi-k3-max"],
+            {
+                "kind": "cursor",
+                "enabled": True,
+                "usagePool": "cursor-kimi",
+                "fallbacks": [],
+                "args": ["--model", "kimi-k3-max", "-f"],
+            },
+        )
+        self.assertEqual(
+            catalog["usagePools"]["opencode-go"], {"state": "available"}
+        )
+        self.assertEqual(
+            catalog["recipes"]["glm-53-opencode-go"],
+            {
+                "kind": "opencode",
+                "enabled": True,
+                "usagePool": "opencode-go",
+                "fallbacks": [],
+                "args": ["--model", "opencode-go/glm-5.3", "--auto"],
             },
         )
 

@@ -1,10 +1,12 @@
 {
-  "version": 2,
+  "version": 3,
   "usagePools": {
     "cursor-composer": { "state": "available" },
     "cursor-grok": { "state": "available" },
+    "cursor-kimi": { "state": "available" },
     "grok-native": { "state": "available" },
     "glm": { "state": "available" },
+    "opencode-go": { "state": "available" },
     "anthropic-fable": { "state": "available" },
     "anthropic-opus": { "state": "available" },
     "openai-sol": { "state": "available" }
@@ -57,6 +59,13 @@
       "fallbacks": ["grok-high", "glm-53"],
       "args": ["--model", "cursor-grok-4.6-high", "-f"]
     },
+    "kimi-k3-max": {
+      "kind": "cursor",
+      "enabled": true,
+      "usagePool": "cursor-kimi",
+      "fallbacks": [],
+      "args": ["--model", "kimi-k3-max", "-f"]
+    },
     "glm-53": {
       "kind": "claude",
       "enabled": true,
@@ -64,6 +73,13 @@
       "fallbacks": ["grok-high", "grok-high-cursor"],
       "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
       "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
+    },
+    "glm-53-opencode-go": {
+      "kind": "opencode",
+      "enabled": true,
+      "usagePool": "opencode-go",
+      "fallbacks": [],
+      "args": ["--model", "opencode-go/glm-5.3", "--auto"]
     },
     "fable-max": {
       "kind": "claude",
