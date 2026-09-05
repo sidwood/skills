@@ -1,10 +1,11 @@
 # shellcheck shell=bash
 # Shared configuration for the fleet-orchestrator scripts. Source this file;
 # do not execute it. Every project binding arrives as an environment variable,
-# so the same scripts drive any repository and any agent session.
+# so the same scripts drive any repository workspace in the shared Herdr
+# session.
 
 # Load an optional env file first, then apply defaults for everything the
-# scripts derive from the required session and seed bindings.
+# scripts derive from the required workspace and seed bindings.
 fleet_env_load() {
   local env_file="${FLEET_ENV:-}"
 
@@ -19,7 +20,8 @@ fleet_env_load() {
     set +a
   fi
 
-  : "${FLEET_COORDINATOR:=coordinator}"
+  : "${FLEET_WORKSPACE:=${HERDR_WORKSPACE_ID:-}}"
+  : "${FLEET_COORDINATOR:=coordinator-${FLEET_WORKSPACE:-workspace}}"
   : "${FLEET_POLL_SECONDS:=10}"
   : "${FLEET_ACK_TIMEOUT_SECONDS:=120}"
   : "${FLEET_TEARDOWN_GRACE_SECONDS:=30}"
@@ -80,7 +82,8 @@ fleet_env_load() {
     : "${FLEET_VELOCITY_LOG:=$FLEET_STATE_DIR/backlog-velocity.log}"
   fi
 
-  export FLEET_COORDINATOR FLEET_SESSION FLEET_SEED FLEET_CONFIG FLEET_STATE_DIR
+  export FLEET_COORDINATOR FLEET_SESSION FLEET_WORKSPACE FLEET_SEED
+  export FLEET_CONFIG FLEET_STATE_DIR
   export FLEET_POLL_SECONDS FLEET_ACK_TIMEOUT_SECONDS
   export FLEET_TEARDOWN_GRACE_SECONDS FLEET_STALL_SECONDS
   export FLEET_SWEEP_INSTRUCTION FLEET_VERDICT_LANE_GLOBS
@@ -90,6 +93,16 @@ fleet_env_load() {
   export FLEET_PUSH_MARKER FLEET_VELOCITY_LOG FLEET_VELOCITY_WINDOW_SECONDS
   export FLEET_CLOSED_PHASES FLEET_QUEUED_PHASES FLEET_ACTIVE_PHASES
   export FLEET_BLOCKED_PHASES
+}
+
+# Run a Herdr command in the inherited session, an explicitly configured
+# shared session, or Herdr's default session when no name is configured.
+fleet_herdr() {
+  if [ "${HERDR_ENV:-}" = 1 ] || [ -z "${FLEET_SESSION:-}" ]; then
+    herdr "$@"
+  else
+    herdr --session "$FLEET_SESSION" "$@"
+  fi
 }
 
 # Report every missing or unusable binding at once, with the fix, and fail.
@@ -145,8 +158,10 @@ fleet_env_require() {
     printf '%b' "$missing" >&2
     cat >&2 <<'EOF'
 Set them in the environment, or point FLEET_ENV at a file that does:
-  FLEET_SESSION    agent session name the fleet runs in
+  FLEET_WORKSPACE  Herdr workspace ID dedicated to this project
   FLEET_SEED       absolute path to the seed repository
+Optional:
+  FLEET_SESSION    shared named Herdr session; omit for the default session
 Defaults after FLEET_SEED is set:
   FLEET_STATE_DIR  <seed>/temp/fleet (must be gitignored)
   FLEET_CONFIG     <seed>/temp/fleet/fleet.json

@@ -67,7 +67,18 @@ if [ "${1:-}" = agent ] && [ "${2:-}" = list ]; then
     printf '{"error":{"code":"server_not_running"}}\n' >&2
     exit 1
   fi
-  cat "$HERDR_INVENTORY"
+  "$REAL_PYTHON" - "$HERDR_INVENTORY" "${FLEET_WORKSPACE:-w1}" <<'PYTHON'
+import json
+import sys
+
+with open(sys.argv[1]) as source:
+    inventory = json.load(source)
+for agent in inventory.get("result", {}).get("agents", []):
+    if "workspace_id" not in agent:
+        agent["workspace_id"] = sys.argv[2]
+json.dump(inventory, sys.stdout)
+sys.stdout.write("\n")
+PYTHON
   exit 0
 fi
 
@@ -171,13 +182,13 @@ JSON
 }
 
 write_empty_fleet() {
-  printf '{"streams":[]}\n' > "$FLEET_FILE.tmp"
+  printf '{"workspace":"w1","streams":[]}\n' > "$FLEET_FILE.tmp"
   mv "$FLEET_FILE.tmp" "$FLEET_FILE"
 }
 
 write_unacknowledged_fleet() {
   cat > "$FLEET_FILE.tmp" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"implementing",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"active"}},
@@ -189,7 +200,7 @@ JSON
 
 write_acknowledged_fleet() {
   cat > "$FLEET_FILE.tmp" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-ready",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"closed"}},
@@ -211,6 +222,8 @@ invoke_monitor() {
     -u FLEET_STATE_DIR
     -u FLEET_POLL_SECONDS
     -u FLEET_TEARDOWN_GRACE_SECONDS
+    -u FLEET_SESSION
+    -u FLEET_WORKSPACE
     -u FLEET_COORDINATOR
     -u FLEET_HEARTBEAT
     -u FLEET_SWEPT
@@ -222,7 +235,8 @@ invoke_monitor() {
     -u FLEET_MONITOR_LOCK_FILE
     -u FLEET_VERDICT_LANE_GLOBS
     "PATH=$FAKE_BIN:$PATH"
-    FLEET_SESSION=test-session
+    FLEET_WORKSPACE=w1
+    FLEET_COORDINATOR=coordinator
     "FLEET_SEED=$SEED"
     "FLEET_POLL_SECONDS=${FLEET_POLL_SECONDS:-10}"
     "FLEET_ACK_TIMEOUT_SECONDS=$FLEET_ACK_TIMEOUT_SECONDS"
@@ -404,6 +418,66 @@ stop_monitor() {
   assert_silent "$SANDBOX/quiet"
 }
 
+@test "monitor ignores agents from another project workspace" {
+  cat > "$HERDR_INVENTORY" <<'JSON'
+{"result":{"agents":[
+  {"name":"coordinator","workspace_id":"w1","agent_status":"idle","state_change_seq":3,"terminal_title":""},
+  {"name":"other-worker","workspace_id":"w2","agent_status":"done","state_change_seq":9,"terminal_title":""}
+]}}
+JSON
+  write_empty_fleet
+
+  capture_monitor "$SANDBOX/workspace-isolation"
+
+  assert_monitor_ok "$SANDBOX/workspace-isolation"
+  assert_silent "$SANDBOX/workspace-isolation"
+  pending_absent "other-worker@9"
+}
+
+@test "monitor fails closed when fleet workspace disagrees" {
+  write_quiet_inventory
+  printf '{"workspace":"w2","streams":[]}\n' > "$FLEET_FILE"
+
+  capture_monitor "$SANDBOX/workspace-drift"
+
+  assert_monitor_ok "$SANDBOX/workspace-drift"
+  assert_exact_wake "$SANDBOX/workspace-drift" "WAKE state fleet.json"
+}
+
+@test "monitor fails closed when fleet workspace is missing" {
+  write_quiet_inventory
+  printf '{"streams":[]}\n' > "$FLEET_FILE"
+
+  capture_monitor "$SANDBOX/workspace-missing"
+
+  assert_monitor_ok "$SANDBOX/workspace-missing"
+  assert_exact_wake "$SANDBOX/workspace-missing" "WAKE state fleet.json"
+}
+
+@test "monitor rejects a non-string fleet session" {
+  write_quiet_inventory
+  printf '{"workspace":"w1","session":false,"streams":[]}\n' > "$FLEET_FILE"
+
+  capture_monitor "$SANDBOX/session-invalid"
+
+  assert_monitor_ok "$SANDBOX/session-invalid"
+  assert_exact_wake "$SANDBOX/session-invalid" "WAKE state fleet.json"
+}
+
+@test "monitor rejects conflicting agent workspace identities" {
+  cat > "$HERDR_INVENTORY" <<'JSON'
+{"result":{"agents":[
+  {"name":"worker","workspace_id":"w1","pane_id":"w2:p9","agent_status":"working","state_change_seq":3,"terminal_title":""}
+]}}
+JSON
+  write_empty_fleet
+
+  capture_monitor "$SANDBOX/workspace-conflict"
+
+  assert_monitor_ok "$SANDBOX/workspace-conflict"
+  assert_exact_wake "$SANDBOX/workspace-conflict" "WAKE inventory"
+}
+
 @test "continuous monitor launches without arguments under macOS bash" {
   [ -x /bin/bash ] || skip "/bin/bash is unavailable"
   write_quiet_inventory
@@ -514,7 +588,7 @@ JSON
 @test "historical closed event does not hide a reused active lane" {
   write_settled_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"implementing",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"active"}},
@@ -538,7 +612,7 @@ JSON
 @test "later same-name record cannot acknowledge an older open event" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-2",
   "agents":{"impl":{
@@ -579,7 +653,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"implementing",
   "agents":{"impl":{"name":"new-impl","role":"impl","dispatchState":"active"}},
@@ -816,7 +890,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[
+{"workspace":"w1","streams":[
   {"ticket":"T1","agents":{"impl":{"name":"first-impl","role":"impl","dispatchState":"active"}},"events":[]},
   {"ticket":"T2","agents":{"impl":{"name":"second-impl","role":"impl","dispatchState":"active"}},"events":[]}
 ]}
@@ -841,7 +915,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"REVIEW-FIX",
   "agents":{"impl":{"name":"review-fix-review-1","role":"impl","dispatchState":"active"}},
   "events":[]
@@ -868,7 +942,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "agents":{"review":{"name":"opaque-worker","role":"review","dispatchState":"active"}},
   "events":[]
@@ -887,7 +961,7 @@ JSON
   assert_pending_not_swept 'opaque-worker@8'
 
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "agents":{"review":{"name":"opaque-worker","role":"review","dispatchState":"closed"}},
   "events":[{
@@ -941,7 +1015,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"STARTUP",
   "agents":{"impl":{"name":"startup-impl","role":"impl","dispatchState":"reserved"}},
   "events":[]
@@ -962,7 +1036,7 @@ JSON
 JSON
   mv "$HERDR_INVENTORY.tmp" "$HERDR_INVENTORY"
   cat > "$FLEET_FILE.tmp" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"STARTUP",
   "agents":{"impl":{"name":"startup-impl","role":"impl","dispatchState":"active"}},
   "events":[]
@@ -982,7 +1056,7 @@ JSON
 @test "startup reconstructs absent active and legacy dispatches" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[
+{"workspace":"w1","streams":[
   {"ticket":"ACTIVE","agents":{"impl":{"name":"active-missing","role":"impl","dispatchState":"active"}},"events":[]},
   {"ticket":"LEGACY","agents":{"impl":{"name":"legacy-missing","role":"impl"}},"events":[]}
 ]}
@@ -1010,7 +1084,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"PROMPTING",
   "agents":{"impl":{"name":"prompt-owned","role":"impl","dispatchState":"prompting"}},
   "events":[]
@@ -1056,7 +1130,7 @@ JSON
 ]}}
 JSON
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"VANISH",
   "agents":{"impl":{"name":"vanish-impl","role":"impl","dispatchState":"active"}},
   "events":[]
@@ -1096,7 +1170,7 @@ JSON
      END { exit !found }' "$PENDING_FILE"
 
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"VANISH",
   "phase":"hold",
   "agents":{"impl":{"name":"vanish-impl","role":"impl","dispatchState":"resolved"}},
@@ -1157,7 +1231,7 @@ JSON
 @test "valid JSON with an invalid fleet shape is treated as unreadable" {
   write_quiet_inventory
   printf 'ticket-impl@7\tticket-impl\tdone\t1\t1\tcoordinator\n' > "$PENDING_FILE"
-  printf '{"streams":null}\n' > "$FLEET_FILE"
+  printf '{"workspace":"w1","streams":null}\n' > "$FLEET_FILE"
   export FLEET_ACK_TIMEOUT_SECONDS=1
 
   capture_monitor "$SANDBOX/config-shape-bad"
@@ -1171,7 +1245,7 @@ JSON
 @test "unreadable pending queue is preserved and its alarm rearms" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"closed"}},
   "events":[
@@ -1299,7 +1373,7 @@ JSON
 @test "captured without a timestamp enters durable teardown recovery" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-1",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"captured"}},
@@ -1358,7 +1432,7 @@ PYTHON
 @test "legacy capture without an event ID gets a stable teardown ID" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-1",
   "agents":{"impl":{"name":"legacy-impl","role":"impl","dispatchState":"captured"}},
@@ -1377,7 +1451,7 @@ JSON
 @test "captured event with a missing current record wakes for teardown" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-1",
   "agents":{},
@@ -1397,7 +1471,7 @@ JSON
 @test "auditable teardown resolution acknowledges the exact pending event" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"hold",
   "agents":{"impl":{"name":"orphan-impl","role":"impl","dispatchState":"captured"}},
@@ -1426,7 +1500,7 @@ JSON
 @test "explicit invalid-output resolution acknowledges the exact pending event" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"hold",
   "agents":{"review":{"name":"bad-review","role":"review","dispatchState":"resolved","captureEventId":"bad-review@9"}},
@@ -1453,7 +1527,7 @@ JSON
   captured_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   stale_at='2000-01-01T00:00:00Z'
   cat > "$FLEET_FILE" <<JSON
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-1",
   "agents":{"impl":{"name":"ticket-impl","role":"impl","dispatchState":"captured","capturedAt":"$captured_at"}},
@@ -1505,7 +1579,7 @@ PYTHON
 @test "closure between acknowledgement reads cannot emit a teardown wake" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"T1",
   "phase":"review-1",
   "agents":{"impl":{
@@ -1543,7 +1617,7 @@ JSON
 
 @test "malformed event shape keeps the config alarm deduplicated" {
   write_quiet_inventory
-  printf '{"streams":[{"agents":{},"events":[null]}]}\n' > "$FLEET_FILE"
+  printf '{"workspace":"w1","streams":[{"agents":{},"events":[null]}]}\n' > "$FLEET_FILE"
 
   capture_monitor "$SANDBOX/event-shape-1"
   assert_monitor_ok "$SANDBOX/event-shape-1"
@@ -1557,7 +1631,7 @@ JSON
 @test "duplicate event IDs keep the config alarm deduplicated and rearm after recovery" {
   write_quiet_inventory
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[
+{"workspace":"w1","streams":[
   {"ticket":"T1","agents":{},"events":[{"eventId":"duplicate@7","agent":"one"}]},
   {"ticket":"T2","agents":{},"events":[{"eventId":"duplicate@7","agent":"two"}]}
 ]}
@@ -1577,7 +1651,7 @@ JSON
   assert_silent "$SANDBOX/event-id-recovered"
 
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[
+{"workspace":"w1","streams":[
   {"ticket":"T1","agents":{},"events":[{"eventId":"duplicate@7","agent":"one"}]},
   {"ticket":"T2","agents":{},"events":[{"eventId":"duplicate@7","agent":"two"}]}
 ]}

@@ -2,8 +2,9 @@
 
 The scripts read project bindings from the environment or from a file that
 `FLEET_ENV` points at (`scripts/fleet-orchestrator.env.example` is a template).
-The session and seed are explicit; runtime files default under the seed's
-gitignored `temp/fleet/` directory.
+The project workspace and seed are explicit; the Herdr session name is
+optional. Runtime files default under the seed's gitignored `temp/fleet/`
+directory.
 
 The fleet config itself (`FLEET_CONFIG`) is the coordinator's file and owns
 ticket state, recipes, gate commands, and deployment context. Its schema lives
@@ -14,20 +15,25 @@ fields.
 
 | Binding | Meaning |
 |---------|---------|
-| `FLEET_SESSION` | agent session name the fleet runs in; every session-scoped call carries it |
+| `FLEET_WORKSPACE` | Herdr workspace ID dedicated to this project; every inventory is filtered to it and every new tab targets it |
 | `FLEET_SEED` | absolute path to the seed repository (the only thing that pushes) |
 
-A script that is missing either binding refuses to start. A monitor running on
-half a configuration is worse than one that never started, because its
-heartbeat implies coverage it does not have.
+A Herdr-facing script that is missing either binding refuses to start. A
+monitor running on half a configuration is worse than one that never started,
+because its heartbeat implies coverage it does not have.
+
+Inside a Herdr-managed pane, `FLEET_WORKSPACE` defaults to the injected
+`HERDR_WORKSPACE_ID`. Outside Herdr, set it explicitly to the project's
+workspace ID.
 
 ## Optional
 
 | Binding | Default | Purpose |
 |---------|---------|---------|
+| `FLEET_SESSION` | unset | shared named Herdr session; when absent, commands use Herdr's default session |
 | `FLEET_STATE_DIR` | `<seed>/temp/fleet` | runtime directory; when inside the seed it must be gitignored |
 | `FLEET_CONFIG` | `$FLEET_STATE_DIR/fleet.json` | fleet config the coordinator maintains |
-| `FLEET_COORDINATOR` | `coordinator` | lane that receives routine settle events |
+| `FLEET_COORDINATOR` | `coordinator-<workspace-id>` | workspace-unique lane that receives routine settle events |
 | `FLEET_VERDICT_LANE_GLOBS` | `*-review* *-rereview* *-parity*` | compatibility routing when an old agent record has no `role`; current `review` records route by role |
 | `FLEET_SWEEP_INSTRUCTION` | generic sweep wording | text appended to each sweep prompt |
 | `FLEET_BOARD` | unset | external adapter's projection file; set it only to enable the `BOARD-STALE` check |
@@ -50,6 +56,13 @@ heartbeat implies coverage it does not have.
 | `FLEET_BLOCKED_PHASES` | `blocked parked hold` | phases in the blocked column |
 
 Phase sets are matched on the stem, so `review-2` matches `review`.
+
+Use one long-lived Herdr session and create one workspace per project. Record
+the same workspace ID in `fleet.json` and `FLEET_WORKSPACE`. A named session,
+when chosen, is shared by projects rather than named after one project. If no
+name is configured, omit `FLEET_SESSION`; the scripts deliberately omit
+`--session` and let Herdr select its default session. Inside a Herdr-managed
+pane, commands retain the inherited session.
 
 ## Derived paths
 

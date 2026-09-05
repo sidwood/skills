@@ -17,6 +17,57 @@ teardown() {
   teardown_sandbox
 }
 
+@test "workspace scopes the coordinator and an unnamed session uses Herdr default" {
+  run env -u FLEET_ENV -u FLEET_COORDINATOR -u FLEET_SESSION \
+    FLEET_WORKSPACE=w7 bash -c '
+      source "$1"
+      herdr() { printf "herdr %s\n" "$*"; }
+      fleet_env_load
+      printf "%s\n" "$FLEET_COORDINATOR"
+      fleet_herdr agent list
+    ' _ "$ENV_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = $'coordinator-w7\nherdr agent list' ]
+}
+
+@test "named session is shared explicitly outside Herdr" {
+  run env -u FLEET_ENV -u HERDR_ENV FLEET_WORKSPACE=w7 \
+    FLEET_SESSION=shared bash -c '
+      source "$1"
+      herdr() { printf "herdr %s\n" "$*"; }
+      fleet_env_load
+      fleet_herdr agent list
+    ' _ "$ENV_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "herdr --session shared agent list" ]
+}
+
+@test "Herdr-managed caller keeps its inherited session" {
+  run env -u FLEET_ENV HERDR_ENV=1 FLEET_WORKSPACE=w7 \
+    FLEET_SESSION=shared bash -c '
+      source "$1"
+      herdr() { printf "herdr %s\n" "$*"; }
+      fleet_env_load
+      fleet_herdr agent list
+    ' _ "$ENV_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "herdr agent list" ]
+}
+
+@test "Herdr-facing scripts require a project workspace" {
+  run env -u FLEET_ENV -u FLEET_WORKSPACE -u HERDR_WORKSPACE_ID bash -c '
+    source "$1"
+    fleet_env_load
+    fleet_env_require FLEET_WORKSPACE
+  ' _ "$ENV_SCRIPT"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FLEET_WORKSPACE"* ]]
+}
+
 @test "explicit state and config work without a fleet seed" {
   run env -u FLEET_ENV -u FLEET_SEED -u FLEET_CAPTURES_DIR bash -u -c '
     FLEET_STATE_DIR="$1"

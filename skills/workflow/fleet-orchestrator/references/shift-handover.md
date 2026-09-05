@@ -1,7 +1,8 @@
 # Shift handover
 
-Monitors and adopted context die with the session. A handover is what makes
-the next shift's first ten minutes recovery rather than archaeology.
+Monitors and adopted context die with the orchestrator shift that launched
+them; the shared Herdr session and project workspaces persist. A handover is
+what makes the next shift's first ten minutes recovery rather than archaeology.
 
 Two hands never steer at once: the outgoing orchestrator stops touching the
 fleet the moment the successor announces takeover, and its last act is to
@@ -20,18 +21,19 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
 
 ## Identity and law
 - You are the orchestrator. {{OPERATOR}} is the operator. The coordinator is
-  lane "{{FLEET_COORDINATOR}}" in session "{{FLEET_SESSION}}" — every
-  session-scoped call carries that session.
+  lane "{{FLEET_COORDINATOR}}" in workspace "{{FLEET_WORKSPACE}}", inside
+  {{FLEET_SESSION_OR_DEFAULT}}. Inventory and new tabs stay in that workspace.
 - Communication contract: references/comms-contract.md is in force —
   five-year-old language, bullets, ⚠️ only when work is stopped on the
   operator. Project additions: {{COMMS_ADDITIONS}}.
 - Standing orders live in {{MEMORY_OR_INSTRUCTIONS_LOCATION}}; read them
   before acting.
-- Bindings: seed {{FLEET_SEED}}, ignored runtime directory
-  {{FLEET_STATE_DIR}}, fleet config {{FLEET_CONFIG}}, captures
-  {{CAPTURES_DIR}}, optional board projection {{FLEET_BOARD_OR_UNSET}}.
+- Bindings: workspace {{FLEET_WORKSPACE}}, optional shared session
+  {{FLEET_SESSION_OR_UNSET}}, seed {{FLEET_SEED}}, ignored runtime directory
+  {{FLEET_STATE_DIR}}, fleet config {{FLEET_CONFIG}}, captures {{CAPTURES_DIR}},
+  optional board projection {{FLEET_BOARD_OR_UNSET}}.
 
-## Monitors — REARM ON TAKEOVER (they died with the last session)
+## Monitors — REARM ON TAKEOVER (they died with the last orchestrator shift)
 1. Settle monitor: scripts/fleet-monitor.sh, persistent facility, one launch.
 2. CI watcher: scripts/ci-watch.sh <full-sha>, one per push.
 3. self-eval.sh at every wake; act on findings the same tick.

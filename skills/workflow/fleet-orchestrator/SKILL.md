@@ -16,7 +16,7 @@ fleet is unsupervised.
 
 | | Coordinator (`fleet-coordinator` skill) | Orchestrator (this skill) |
 |---|---|---|
-| Seat | a lane in the fleet, running an event loop | the main loop |
+| Seat | a lane in the project's Herdr workspace, running an event loop | the main loop |
 | Owns | dispatch, bounce, fleet state, optional board projection, commanded landing execution | monitors, reviewer capture and verdict rulings, landing authorization and train order, pushes, deploy watching |
 | Escalates | unmatched events, bounce caps, rulings | operator-only decisions |
 | Never | pushes, rules on scope | dispatches around the coordinator; implements without explicit user instruction |
@@ -26,9 +26,11 @@ schema. This skill does not repeat them.
 
 ## Inputs
 
-Bind `FLEET_SESSION` and `FLEET_SEED` before anything else. Runtime state and
-the fleet config default to the seed's gitignored `temp/fleet/` directory;
-overrides and optional bindings live in
+Bind `FLEET_WORKSPACE` and `FLEET_SEED` before anything else. Use one Herdr
+session for all projects and one workspace per project. `FLEET_SESSION` is
+optional: when absent, every command uses Herdr's default session. Runtime
+state and the fleet config default to the seed's gitignored `temp/fleet/`
+directory; overrides and optional bindings live in
 [references/orchestrator-config.md](references/orchestrator-config.md).
 Export them, or point `FLEET_ENV` at a file that sets them
 (`scripts/fleet-orchestrator.env.example`).
@@ -58,11 +60,14 @@ Export them, or point `FLEET_ENV` at a file that sets them
    follow, carrying ⚠️ only if the fleet is genuinely stopped on them. Full
    contract: [references/comms-contract.md](references/comms-contract.md).
 2. **Adopt or verify the fleet.** Run `date`. Run `scripts/self-eval.sh` and
-   read the computed queue, lane inventory, recipe-catalog status, and drift
-   lines. `RECIPE-DRIFT` means the coordinator must run `fleet recipes sync`
-   before any dispatch. Reconcile every drift line with the coordinator.
-   *Done when:* self-eval prints no `RECIPE-DRIFT`, no `QUEUE-DRIFT`, no
-   `ORPHANED`, and the lane list matches the config's active streams.
+   read the configured workspace's computed queue, lane inventory,
+   recipe-catalog status, and drift lines. `RECIPE-DRIFT` means the coordinator
+   must run `fleet recipes sync` before any dispatch. Reconcile every drift
+   line with the coordinator; agents in other workspaces are other projects,
+   not fleet orphans.
+   *Done when:* self-eval prints no `WORKSPACE-DRIFT`, no `RECIPE-DRIFT`, no
+   `QUEUE-DRIFT`, no `ORPHANED`, and the lane list matches the config's active
+   streams.
 3. **Arm four monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
    through the harness's persistent facility, one launch, never `&`; its
    singleton lock rejects a second live copy. A CI watcher per push. Self-eval

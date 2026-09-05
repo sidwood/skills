@@ -30,9 +30,9 @@ Usage: fleet-monitor.sh [--once] [--help]
   --once  run a single poll and exit (arming check; not a substitute for the
           persistent run)
 
-Required bindings: FLEET_SESSION, FLEET_SEED.
+Required bindings: FLEET_WORKSPACE, FLEET_SEED.
 State and fleet config default to <seed>/temp/fleet/.
-Optional: FLEET_COORDINATOR, FLEET_POLL_SECONDS,
+Optional: FLEET_SESSION, FLEET_COORDINATOR, FLEET_POLL_SECONDS,
 FLEET_ACK_TIMEOUT_SECONDS, FLEET_TEARDOWN_GRACE_SECONDS,
 FLEET_VERDICT_LANE_GLOBS,
 FLEET_SWEEP_INSTRUCTION, FLEET_STALL_SECONDS, FLEET_ENV.
@@ -58,7 +58,7 @@ done
 if [ "$lock_handoff" -eq 0 ]; then
   unset _FLEET_MONITOR_LOCK_FD _FLEET_MONITOR_LOCK_PATH
   fleet_env_load || exit 2
-  fleet_env_require FLEET_SESSION FLEET_SEED FLEET_STATE_DIR FLEET_CONFIG \
+  fleet_env_require FLEET_WORKSPACE FLEET_SEED FLEET_STATE_DIR FLEET_CONFIG \
     FLEET_MONITOR_LOCK_FILE || exit 2
   if [ "$once" -eq 1 ]; then
     exec python3 "$SCRIPT_DIR/fleet-lock-exec.py" \
@@ -70,7 +70,7 @@ fi
 
 # The lock helper already resolved and exported the environment. Loading an
 # env file again could repeat its side effects, so only validate the handoff.
-fleet_env_require FLEET_SESSION FLEET_SEED FLEET_STATE_DIR FLEET_CONFIG \
+fleet_env_require FLEET_WORKSPACE FLEET_SEED FLEET_STATE_DIR FLEET_CONFIG \
   FLEET_MONITOR_LOCK_FILE || exit 2
 case "$lock_fd" in
   '' | *[!0-9]*)
@@ -178,12 +178,32 @@ report_once() {
 # One line per agent: name|status|state_change_seq|spinner, sorted so the
 # string can be diffed against the previous poll.
 snapshot() {
-  herdr agent list --session "$FLEET_SESSION" 2>&1 | python3 -c "
-import json, sys
+  fleet_herdr agent list 2>&1 | python3 -c "
+import json, os, sys
+
+
+def agent_workspace(agent):
+    workspaces = set()
+    if 'workspace_id' in agent:
+        workspace = agent['workspace_id']
+        if not isinstance(workspace, str) or not workspace:
+            raise TypeError('agent workspace_id is invalid')
+        workspaces.add(workspace)
+    for key in ('pane_id', 'tab_id'):
+        target = agent.get(key)
+        if isinstance(target, str) and ':' in target:
+            workspaces.add(target.split(':', 1)[0])
+    if len(workspaces) > 1:
+        raise TypeError('agent workspace identities conflict')
+    return next(iter(workspaces), None)
+
+
 try:
     data = json.load(sys.stdin)
     rows = []
     for agent in data['result']['agents']:
+        if agent_workspace(agent) != os.environ['FLEET_WORKSPACE']:
+            continue
         name = agent.get('name') or '?'
         status = agent['agent_status']
         seq = int(agent.get('state_change_seq', 0))
@@ -199,7 +219,8 @@ except Exception as exc:
 # relies on once per poll. Only this whole-config check clears the config
 # alarm; helper-local success must not mask another helper's semantic failure.
 fleet_config_valid() {
-  python3 - "$FLEET_CONFIG" 2>/dev/null <<'PYTHON'
+  python3 - "$FLEET_CONFIG" "$FLEET_WORKSPACE" "${FLEET_SESSION:-}" \
+    2>/dev/null <<'PYTHON'
 import json
 import sys
 
@@ -208,6 +229,14 @@ try:
         config = json.load(fh)
     if not isinstance(config, dict):
         raise TypeError("config is not an object")
+    workspace = config.get("workspace")
+    if not isinstance(workspace, str) or not workspace or workspace != sys.argv[2]:
+        raise TypeError("fleet workspace does not match monitor workspace")
+    if "session" in config and not isinstance(config["session"], str):
+        raise TypeError("fleet session must be a string")
+    configured_session = config.get("session", "")
+    if configured_session != sys.argv[3]:
+        raise TypeError("fleet session does not match monitor session")
     streams = config.get("streams", [])
     if not isinstance(streams, list):
         raise TypeError("streams is not a list")
@@ -1023,7 +1052,7 @@ deliver_pending() {
   done
 
   delivery_output="$FLEET_STATE_DIR/.fleet-delivery.$$"
-  if { herdr agent prompt "$FLEET_COORDINATOR" --session "$FLEET_SESSION" \
+  if { fleet_herdr agent prompt "$FLEET_COORDINATOR" \
     "SETTLED $joined. $FLEET_SWEEP_INSTRUCTION" \
     > "$delivery_output" 2>&1; } 2>/dev/null; then
     delivered=1

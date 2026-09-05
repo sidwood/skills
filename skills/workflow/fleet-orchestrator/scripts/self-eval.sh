@@ -5,7 +5,7 @@
 # output: is the fleet moving correctly, what can be improved, what efficiency
 # is available. Every finding becomes an action in the same turn.
 #
-# Alarm words are grep-able on purpose: RECIPE-DRIFT, MONITOR-DOWN,
+# Alarm words are grep-able on purpose: WORKSPACE-DRIFT, RECIPE-DRIFT, MONITOR-DOWN,
 # BOARD-STALE, VELOCITY-STALL, STALE-BLOCKERS, QUEUE-DRIFT, ORPHANED,
 # CAPACITY-STALL, CAPACITY-RECOVERY-FAILED. See references/self-eval.md for
 # the action each one demands.
@@ -19,9 +19,10 @@ usage() {
   cat <<'EOF'
 Usage: self-eval.sh [--help]
 
-Required bindings: FLEET_SESSION, FLEET_SEED.
+Required bindings: FLEET_WORKSPACE, FLEET_SEED.
 State and fleet config default to <seed>/temp/fleet/.
-Optional: FLEET_BOARD, FLEET_DEADLINE ("YYYY-MM-DD HH:MM" local time),
+Optional: FLEET_SESSION, FLEET_BOARD,
+FLEET_DEADLINE ("YYYY-MM-DD HH:MM" local time),
 FLEET_COORDINATOR, phase-set overrides, staleness thresholds, FLEET_ENV.
 EOF
 }
@@ -39,11 +40,48 @@ case "${1:-}" in
 esac
 
 fleet_env_load || exit 2
-fleet_env_require FLEET_SESSION FLEET_SEED FLEET_CONFIG FLEET_STATE_DIR || exit 2
+fleet_env_require FLEET_WORKSPACE FLEET_SEED FLEET_CONFIG FLEET_STATE_DIR || exit 2
 touch "$FLEET_SWEPT"
 
 now="$(date +%s)"
 echo "=== SELF-EVAL $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+
+echo "--- herdr topology ---"
+python3 - "$FLEET_CONFIG" "$FLEET_WORKSPACE" "${FLEET_SESSION:-}" <<'PYTHON'
+import json
+import sys
+
+config_path, expected_workspace, expected_session = sys.argv[1:]
+try:
+    with open(config_path) as source:
+        config = json.load(source)
+except Exception as exc:
+    print(f"WORKSPACE-DRIFT: cannot read fleet topology: {exc}")
+    raise SystemExit
+
+configured_workspace = config.get("workspace")
+configured_session_value = config.get("session", "")
+if not isinstance(configured_workspace, str) or not configured_workspace:
+    print("WORKSPACE-DRIFT: fleet.json workspace is missing or invalid")
+elif configured_workspace != expected_workspace:
+    print(
+        "WORKSPACE-DRIFT: fleet.json workspace "
+        f"{configured_workspace!r} != FLEET_WORKSPACE {expected_workspace!r}"
+    )
+elif not isinstance(configured_session_value, str):
+    print("WORKSPACE-DRIFT: fleet.json session must be a string when configured")
+elif configured_session_value != expected_session:
+    print(
+        "WORKSPACE-DRIFT: fleet.json session "
+        f"{configured_session_value or 'default'!r} != FLEET_SESSION "
+        f"{expected_session or 'default'!r}"
+    )
+else:
+    print(
+        f"workspace {expected_workspace} in "
+        f"{expected_session or 'default'} session"
+    )
+PYTHON
 
 echo "--- recipe catalog ---"
 fleet_cli="$SCRIPT_DIR/../../fleet-coordinator/scripts/fleet.py"
@@ -70,11 +108,27 @@ PYTHON
 fi
 
 echo "--- lanes ---"
-herdr agent list --session "$FLEET_SESSION" 2>/dev/null |
+fleet_herdr agent list 2>/dev/null |
   python3 -c '
 import json, sys
 
-config_path, pending_path, coordinator, now_arg = sys.argv[1:]
+config_path, pending_path, coordinator, now_arg, workspace = sys.argv[1:]
+
+
+def agent_workspace(agent):
+    workspaces = set()
+    if "workspace_id" in agent:
+        explicit = agent["workspace_id"]
+        if not isinstance(explicit, str) or not explicit:
+            raise TypeError("agent workspace_id is invalid")
+        workspaces.add(explicit)
+    for key in ("pane_id", "tab_id"):
+        target = agent.get(key)
+        if isinstance(target, str) and ":" in target:
+            workspaces.add(target.split(":", 1)[0])
+    if len(workspaces) > 1:
+        raise TypeError("agent workspace identities conflict")
+    return next(iter(workspaces), None)
 
 
 def lane_from_event(event_id):
@@ -89,7 +143,11 @@ def integer(value, default=0):
 
 
 try:
-    agents = json.load(sys.stdin)["result"]["agents"]
+    agents = [
+        agent
+        for agent in json.load(sys.stdin)["result"]["agents"]
+        if agent_workspace(agent) == workspace
+    ]
     with open(config_path) as config_file:
         config = json.load(config_file)
     acknowledged_lanes = {
@@ -138,7 +196,8 @@ try:
         print("blocked=" + ", ".join(blocked) + " - a dialog may be waiting")
 except Exception as exc:
     print("LANE-READ-FAILED", exc)' \
-    "$FLEET_CONFIG" "$FLEET_PENDING" "$FLEET_COORDINATOR" "$now"
+    "$FLEET_CONFIG" "$FLEET_PENDING" "$FLEET_COORDINATOR" "$now" \
+    "$FLEET_WORKSPACE"
 
 echo "--- git ---"
 seed_tip="$(git -C "$FLEET_SEED" log --oneline -1 2>/dev/null || echo 'seed-read-failed')"
@@ -216,7 +275,8 @@ import collections, json, os, re, subprocess, time
 config = json.load(open(os.environ['FLEET_CONFIG']))
 streams = config.get('streams', [])
 seed = os.environ['FLEET_SEED']
-session = os.environ['FLEET_SESSION']
+session = os.environ.get('FLEET_SESSION', '')
+workspace = os.environ['FLEET_WORKSPACE']
 
 
 def tokens(name):
@@ -295,9 +355,33 @@ def on_seed(sha):
 
 
 try:
-    agents = json.loads(subprocess.run(['herdr', 'agent', 'list', '--session', session],
+    herdr_command = ['herdr']
+    if os.environ.get('HERDR_ENV') != '1' and session:
+        herdr_command += ['--session', session]
+    herdr_command += ['agent', 'list']
+    agents = json.loads(subprocess.run(herdr_command,
                                        capture_output=True, text=True).stdout)
-    lane_names = {a.get('name') for a in agents['result']['agents'] if a.get('name')}
+
+    def agent_workspace(agent):
+        workspaces = set()
+        if 'workspace_id' in agent:
+            explicit = agent['workspace_id']
+            if not isinstance(explicit, str) or not explicit:
+                raise TypeError('agent workspace_id is invalid')
+            workspaces.add(explicit)
+        for key in ('pane_id', 'tab_id'):
+            target = agent.get(key)
+            if isinstance(target, str) and ':' in target:
+                workspaces.add(target.split(':', 1)[0])
+        if len(workspaces) > 1:
+            raise TypeError('agent workspace identities conflict')
+        return next(iter(workspaces), None)
+
+    lane_names = {
+        agent.get('name')
+        for agent in agents['result']['agents']
+        if agent.get('name') and agent_workspace(agent) == workspace
+    }
 except Exception:
     lane_names = None
 

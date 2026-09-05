@@ -7,11 +7,13 @@ the others exist because it, too, can die.
 
 ## The acting monitor
 
-One persistent watcher polls the agent inventory every ten seconds by default
+One persistent watcher polls the configured workspace's share of the
+session-wide agent inventory every ten seconds by default
 (`name|status|state_change_seq|spinner` per lane) and diffs each poll against
-the last. It never exits on an event. A healthy poll writes only local state
-and emits exactly zero bytes on stdout and stderr, hence no model-visible
-tokens when the harness reads process output.
+the last. It never exits on an event. Agents in other workspaces are invisible
+to this monitor. A healthy poll writes only local state and emits exactly zero
+bytes on stdout and stderr, hence no model-visible tokens when the harness
+reads process output.
 
 **It persists every settle before notification.** Each settle enters the
 pending queue under its immutable `lane@state_change_seq` ID. Routine events
@@ -50,7 +52,7 @@ capture by event ID must be idempotent.
 | `WAKE seed <old> <new>` | seed tip changed | run self-eval and re-evaluate the landing and push train |
 | `WAKE coordinator missing` | readable inventory contains worker lanes but no coordinator | inspect or restart the coordinator lane before relying on routine delivery |
 | `WAKE coordinator-stall <seconds>` | coordinator sequence froze with no spinner for the stall window | inspect its visible pane and recover or restart its loop |
-| `WAKE inventory` | inventory call failed or returned no lanes | restore a readable session inventory, then let startup reconciliation run |
+| `WAKE inventory` | workspace-filtered inventory failed or returned no lanes | restore that project's readable workspace inventory, then let startup reconciliation run |
 | `WAKE delivery <event-id>…` | coordinator prompt command failed | inspect the target and pending record; preserve it for timed retry |
 | `WAKE unacked <event-id>…` | coordinator acknowledgement is overdue | inspect the target and config; preserve it for backoff retry |
 | `WAKE teardown <event-id>…` | a capture exceeded its teardown grace without a durable close | retry `fleet capture <lane> --event-id <id> --close`; a legacy record receives the stable `<lane>@captured` ID; record an auditable resolution for an unrecoverable orphan |
@@ -76,7 +78,7 @@ Rules the design depends on:
   lane between turns.
 - **A stall needs two dead signals, and the revision field is not one of
   them.** A revision counter that looks like progress is a trap: some agent
-  kinds sit frozen at their first value for an entire session while working
+  kinds sit frozen at their first value for an entire turn while working
   perfectly, so "revision unchanged" fires a false stall on them and hides a
   real one on the seats whose counter climbs by itself. Use instead:
   - the **transition sequence** (`state_change_seq`), which increments only on
@@ -93,8 +95,8 @@ Rules the design depends on:
   re-firing every poll.
 - **The swept ledger contains immutable event IDs.** It is append-only and is
   written only after durable acknowledgement. Dispatch also uses a fresh,
-  numbered lane name per cycle, so transcripts and config events cannot be
-  confused across a bounce or re-review.
+  workspace-namespaced, numbered lane name per cycle, so transcripts and
+  config events cannot be confused across projects, a bounce, or a re-review.
 - **Baseline on the first poll.** Lanes that settled while no monitor was
   armed are handled immediately: routine ones queued, verdict ones woken. A
   monitor armed mid-shift must never start by forgetting the backlog.
@@ -108,6 +110,9 @@ Rules the design depends on:
 - **Runtime state is local and ignored.** Config, pending/swept ledgers,
   fault deduplication, heartbeats, logs, and captures default to
   `<seed>/temp/fleet/`. Do not run `git clean -fdx` while a fleet is live.
+- **Topology mismatch fails closed.** A monitor configured for one workspace
+  refuses a `fleet.json` that explicitly names another workspace or shared
+  session. Self-eval reports the same mismatch as `WORKSPACE-DRIFT`.
 - **One watcher owns the ledgers.** A process-lifetime POSIX record lock admits
   one monitor. The kernel releases it on normal exit, `SIGKILL`, or host crash;
   stale PID text in the persistent lock file is diagnostic only and never
@@ -188,6 +193,7 @@ retained as inert history, but never suppress delivery: only an exact event in
 
 ## Rearming
 
-Monitors are session-scoped: they die with the session that launched them. A
-successor's first act is to rearm all four and confirm the heartbeat files are
-fresh before trusting any of them.
+Monitors are orchestrator-shift-scoped: they die with the harness process that
+launched them, not with the shared Herdr session. A successor's first act is to
+rearm all four for the configured project workspace and confirm the heartbeat
+files are fresh before trusting any of them.

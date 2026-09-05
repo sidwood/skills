@@ -15,11 +15,12 @@ is a finding you will meet again, larger.
 
 | Section | Alarm | Action, same turn |
 |---------|-------|-------------------|
+| Herdr topology | `WORKSPACE-DRIFT` | make `fleet.json`, `FLEET_WORKSPACE`, and the optional shared `FLEET_SESSION` agree before dispatching or trusting inventory |
 | recipe catalog | `RECIPE-DRIFT` | order `fleet recipes sync`; no dispatch is allowed until `fleet recipes check` passes |
 | deadline | — | re-plan the remaining work if it does not fit |
 | lanes | `settled-unswept` | recover or rearm the settle monitor; `impl` routes to the coordinator and `review` routes to the orchestrator |
 | lanes | `blocked` | clear the waiting dialog |
-| lanes | `LANE-READ-FAILED` | the session or inventory is broken; recover it before anything else |
+| lanes | `LANE-READ-FAILED` | the project workspace or its filtered inventory is broken; recover it before anything else |
 | git | `unpushed` > 0 | check the push cadence gates |
 | CI | a non-success conclusion | stop the train, fix forward |
 | watcher health | `MONITOR-DOWN` | relaunch the named watcher immediately |

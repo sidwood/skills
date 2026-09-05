@@ -23,7 +23,7 @@ setup() {
     -c user.email='fleet-self-eval@example.test' \
     commit -qm 'Ignore fleet runtime state'
 
-  printf '{"streams":[]}\n' > "$FLEET_FILE"
+  printf '{"workspace":"w1","streams":[]}\n' > "$FLEET_FILE"
   : > "$PENDING_FILE"
   : > "$SWEPT_FILE"
   date +%s > "$STATE_DIR/fleet-monitor.heartbeat"
@@ -38,7 +38,18 @@ teardown() {
 write_fake_commands() {
   cat > "$FAKE_BIN/herdr" <<'HERDR'
 #!/usr/bin/env bash
-cat "$HERDR_INVENTORY"
+python3 - "$HERDR_INVENTORY" "${FLEET_WORKSPACE:-w1}" <<'PYTHON'
+import json
+import sys
+
+with open(sys.argv[1]) as source:
+    inventory = json.load(source)
+for agent in inventory.get("result", {}).get("agents", []):
+    if "workspace_id" not in agent:
+        agent["workspace_id"] = sys.argv[2]
+json.dump(inventory, sys.stdout)
+sys.stdout.write("\n")
+PYTHON
 HERDR
   cat > "$FAKE_BIN/gh" <<'GH'
 #!/usr/bin/env bash
@@ -62,9 +73,12 @@ invoke_self_eval() {
     -u FLEET_PENDING \
     -u FLEET_SWEPT \
     -u FLEET_HEARTBEAT \
+    -u FLEET_SESSION \
+    -u FLEET_WORKSPACE \
     -u FLEET_VELOCITY_LOG \
     "PATH=$FAKE_BIN:$PATH" \
-    FLEET_SESSION=test-session \
+    FLEET_WORKSPACE=w1 \
+    FLEET_COORDINATOR=coordinator \
     "FLEET_SEED=$SEED" \
     "FLEET_STATE_DIR=$STATE_DIR" \
     "FLEET_CONFIG=$FLEET_FILE" \
@@ -78,6 +92,55 @@ sync_recipe_catalog() {
     --config "$FLEET_FILE" recipes sync >/dev/null
 }
 
+@test "default Herdr session reports the configured project workspace" {
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"workspace w1 in default session"* ]]
+  [[ "$output" != *"WORKSPACE-DRIFT"* ]]
+}
+
+@test "workspace mismatch is a topology alarm" {
+  printf '{"workspace":"w2","streams":[]}\n' > "$FLEET_FILE"
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WORKSPACE-DRIFT:"* ]]
+  [[ "$output" == *"'w2' != FLEET_WORKSPACE 'w1'"* ]]
+}
+
+@test "missing workspace is a topology alarm" {
+  printf '{"streams":[]}\n' > "$FLEET_FILE"
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WORKSPACE-DRIFT: fleet.json workspace is missing or invalid"* ]]
+}
+
+@test "non-string session is a topology alarm" {
+  printf '{"workspace":"w1","session":false,"streams":[]}\n' > "$FLEET_FILE"
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WORKSPACE-DRIFT: fleet.json session must be a string"* ]]
+}
+
+@test "conflicting agent workspace identities fail lane inventory" {
+  cat > "$HERDR_INVENTORY" <<'JSON'
+{"result":{"agents":[
+  {"name":"worker","workspace_id":"w1","pane_id":"w2:p9","agent_status":"working","state_change_seq":3}
+]}}
+JSON
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LANE-READ-FAILED agent workspace identities conflict"* ]]
+}
+
 @test "missing canonical Cursor Grok recipe reports recipe drift" {
   invoke_self_eval
 
@@ -88,7 +151,7 @@ sync_recipe_catalog() {
 
 @test "capacity hold without replacement is an orchestrator alarm" {
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"TICKET",
   "phase":"hold",
   "agents":{"impl":{"name":"ticket-impl","dispatchState":"resolved"}},
@@ -138,7 +201,7 @@ JSON
 
 @test "durable fleet event handles a lane after its sequence advances" {
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"TICKET",
   "agents":{"impl":{"name":"ticket-impl","dispatchState":"closed"}},
   "events":[{"eventId":"ticket-impl@7","agent":"ticket-impl","kind":"review-ready"}]
@@ -160,9 +223,24 @@ JSON
   [[ "$output" == *"pending-delivery=0: none"* ]]
 }
 
+@test "self-eval ignores agents from another project workspace" {
+  cat > "$HERDR_INVENTORY" <<'JSON'
+{"result":{"agents":[
+  {"name":"coordinator","workspace_id":"w1","agent_status":"idle","state_change_seq":3},
+  {"name":"other-worker","workspace_id":"w2","agent_status":"done","state_change_seq":9}
+]}}
+JSON
+
+  invoke_self_eval
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"settled-unswept=0: none"* ]]
+  [[ "$output" != *"other-worker"* ]]
+}
+
 @test "active streams match exact recorded names after ticket truncation" {
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[
+{"workspace":"w1","streams":[
   {
     "ticket":"TICKET-WITH-A-SHARED-VERY-LONG-PREFIX-ONE",
     "phase":"implementing",
@@ -191,7 +269,7 @@ JSON
 
 @test "closed old role cannot mask a missing active lane" {
   cat > "$FLEET_FILE" <<'JSON'
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"TICKET",
   "phase":"review-1",
   "agents":{
@@ -217,7 +295,7 @@ JSON
   local seed_tip
   seed_tip="$(git -C "$SEED" rev-parse HEAD)"
   cat > "$FLEET_FILE" <<JSON
-{"streams":[{
+{"workspace":"w1","streams":[{
   "ticket":"READY-TICKET",
   "phase":"ready",
   "tip":"$seed_tip",
