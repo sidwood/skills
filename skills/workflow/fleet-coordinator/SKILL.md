@@ -41,6 +41,9 @@ you.
 
 ## Workspace layout
 
+- Set the workspace label to the basename of its cwd, such as
+  `brain-cylinder`, `skills`, or `dotfiles`. Verify this on creation and
+  adoption; rename the existing workspace rather than replacing it.
 - Reserve each workspace's first default tab and pane, labeled `1`, for the
   Operator. The initial pane returned by workspace creation is not an agent
   slot; never launch an agent there or repurpose it during recovery.
