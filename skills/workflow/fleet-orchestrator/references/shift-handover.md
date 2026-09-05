@@ -1,7 +1,7 @@
 # Shift handover
 
-Monitors and adopted context die with the orchestrator shift that launched
-them; the shared Herdr session and project workspaces persist. A handover is
+Harness-launched monitors can die with their launching process; the local
+OS watchdog, shared Herdr session, and project workspaces persist. A handover is
 what makes the next shift's first ten minutes recovery rather than archaeology.
 
 Two hands never steer at once: the outgoing orchestrator stops touching the
@@ -33,12 +33,14 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
   {{FLEET_STATE_DIR}}, fleet config {{FLEET_CONFIG}}, captures {{CAPTURES_DIR}},
   optional board projection {{FLEET_BOARD_OR_UNSET}}.
 
-## Monitors — REARM ON TAKEOVER (they died with the last orchestrator shift)
+## Monitors — VERIFY ON TAKEOVER (rearm only missing processes)
 1. Settle monitor: scripts/fleet-monitor.sh, persistent facility, one launch.
 2. CI watcher: scripts/ci-watch.sh <full-sha>, one per push.
 3. self-eval.sh at every wake; act on findings the same tick.
-4. Cron watchdog: one-line prompt pointing at references/watchdog-wake.md;
-   list and delete duplicates before creating.
+4. Local watchdog: {{OS_JOB_LABEL}}, destination {{ORCHESTRATOR_THREAD_ID}},
+   state {{WATCHDOG_STATE}}, last healthy run {{WATCHDOG_LAST_RUN}}.
+   Verify its job and issue delivery; do not create a duplicate.
+   Periodic AI polling remains disabled; healthy local checks use no tokens.
 
 ## Process law in force
 - {{LANDING_TRAIN_RULES}}
@@ -64,7 +66,7 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
    pending events, settled lanes, and owned lanes missing from inventory.
    Rearm the other monitors and confirm heartbeats are fresh.
 3. List lanes and adopt them; announce takeover to the coordinator in one prompt.
-4. Confirm the first watchdog tick ran clean.
+4. Confirm the local watchdog check was silent and did not invoke a model.
 ```
 
 ## What ages fastest

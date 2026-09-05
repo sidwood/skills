@@ -83,15 +83,18 @@ approve a legacy layout continuation; it never authorizes a new clone.
    *Done when:* self-eval prints no `WORKSPACE-DRIFT`, no `RECIPE-DRIFT`, no
    `QUEUE-DRIFT`, no `ORPHANED`, and the lane list matches the config's active
    streams.
-3. **Arm four monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
-   through the harness's persistent facility, one launch, never `&`; its
-   singleton lock rejects a second live copy. A CI watcher per push. Self-eval
-   at every wake. A cron watchdog whose prompt is one line pointing at
-   [references/watchdog-wake.md](references/watchdog-wake.md), created only
-   after deleting stale duplicates.
-   *Done when:* the heartbeat files are fresh and exactly one watchdog cron
-   exists. Design and rationale:
-   [references/monitor-design.md](references/monitor-design.md).
+3. **Arm local monitors.** The settle monitor (`scripts/fleet-monitor.sh`)
+   runs through the harness's persistent facility, one launch, never `&`;
+   its singleton lock rejects a second live copy. Use a CI watcher per
+   authorized push and self-eval on actionable wakes. Run the independent
+   local watchdog under the OS scheduler; healthy checks must make zero model
+   calls. It queues a message to the existing orchestrator only for an
+   actionable incident. Setup and verification:
+   [references/local-watchdog.md](references/local-watchdog.md).
+   *Done when:* the monitor heartbeat is fresh, one local watchdog is armed,
+   healthy probes make no AI calls, and issue delivery has been tested.
+   Pause any existing AI heartbeat after local coverage is verified; do not
+   create periodic model checks without explicit operator approval.
 4. **Announce takeover to the coordinator** in one prompt: who you are, what
    you rule on, that reviewer settles route straight to you, and that it acts
    on your rulings and lands nothing without you.
@@ -147,7 +150,7 @@ approve a legacy layout continuation; it never authorizes a new clone.
   settle pending until `fleet.json` contains its exact event ID and agent plus
   event `closedAt`, event `teardownResolvedAt`, kind `resolved-lost-output`, or
   an exact correlated lane marked `closed` or `resolved`.
-- Compute the queue from the fleet config plus git every tick; trust the script
+- Compute the queue from the fleet config plus git every actionable wake; trust the script
   over your memory of it.
 - Push fast-forward only, one deploy in flight, and never a push without a live
   CI watcher.
@@ -167,6 +170,7 @@ check.
 
 | Purpose | Command |
 |---------|---------|
+| Local watchdog (zero AI calls on healthy checks) | `scripts/fleet-watchdog.py --help` |
 | Persistent settle monitor (acts on routine settles, wakes on judgment) | `scripts/fleet-monitor.sh` (`--once` to prove arming) |
 | CI watcher for one pushed commit | `scripts/ci-watch.sh <pushed-sha>` |
 | Deterministic checkpoint and queue reconciliation | `scripts/self-eval.sh` |

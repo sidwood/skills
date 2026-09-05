@@ -2,8 +2,10 @@
 
 <!-- cspell:ignore unacked -->
 
-Four monitors carry the shift. The settle monitor is the load-bearing one;
-the others exist because it, too, can die.
+Local monitors carry the shift. The settle monitor drives routine delivery;
+an independent OS-scheduled watchdog detects gaps even if that monitor dies.
+Healthy monitoring makes no model calls. A completed review or an overdue
+handoff is actionable work; waking an agent to handle it does consume tokens.
 
 ## The acting monitor
 
@@ -182,18 +184,24 @@ retained as inert history, but never suppress delivery: only an exact event in
   event entirely, so if no run appears within a few polls the watcher
   triggers the configured workflow once, explicitly.
 - **Self-eval at every wake.** See [self-eval.md](self-eval.md).
-- **Cron watchdog, the watcher of the watchers.** A fixed-cadence external
-  wake that re-invokes the orchestrator to run self-eval even when every
-  monitor is dead. Two hygiene rules, both learned the hard way: the cron
-  prompt is ONE line pointing at an instructions file
-  ([watchdog-wake.md](watchdog-wake.md)) because a wall of inline text
-  clutters the task list; and list-then-delete existing watchdog crons before
-  creating one, because duplicates survive context compaction and stack up
-  (three were once found running at once).
+- **Local watchdog, the watcher of the watchers.** Run
+  `scripts/fleet-watchdog.py` under the OS scheduler, independently of the
+  orchestrator's tool session. It reads local state and Herdr inventory,
+  checks monitor heartbeat, handoffs, startup, checkout drift, pending
+  judgment events, and optional board currency, then queues an existing-task
+  message only when action is needed. Incident fingerprints suppress repeated
+  successful delivery; failures retry with bounded backoff. A healthy poll
+  makes no Codex call and produces no output. See
+  [local-watchdog.md](local-watchdog.md) for setup and acceptance tests.
+  An AI heartbeat that asks the model to decide whether anything is wrong
+  spends tokens on every run, even when its final response is empty; it is
+  not an acceptable substitute for zero-token healthy monitoring.
 
 ## Rearming
 
-Monitors are orchestrator-shift-scoped: they die with the harness process that
-launched them, not with the shared Herdr session. A successor's first act is to
-rearm all four for the configured project workspace and confirm the heartbeat
-files are fresh before trusting any of them.
+Harness-launched monitors can die with their launching process. The
+OS-scheduled watchdog persists independently; a successor verifies its job,
+configured task destination, and last local run before starting anything.
+Rearm only missing monitors and never replace lock or incident-ledger files
+while their owner is live. Confirm issue delivery still targets the current
+orchestrator before relying on the setup.

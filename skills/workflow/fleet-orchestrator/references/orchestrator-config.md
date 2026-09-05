@@ -87,3 +87,12 @@ Keep the state directory under the seed's ignored `temp/` directory by
 default. An explicit path outside the seed remains supported. A board is not
 created or required: set `FLEET_BOARD` only when an external adapter maintains
 a projection that self-eval should check.
+
+## Independent local watchdog
+
+The zero-token healthy watchdog uses explicit command-line paths and the
+canonical fleet config; it does not source the shell environment file.
+Run `scripts/fleet-watchdog.py --help` and follow
+[local-watchdog.md](local-watchdog.md). Record the OS job label, existing
+orchestrator task ID, executable paths, incident ledger, and delivery test in
+the project handover. A model-backed scheduled task is not this watchdog.
