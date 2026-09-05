@@ -35,7 +35,7 @@ start while the canonical catalog is missing or drifted.
   // `fleet recipes sync` installs these sections from the skill's canonical
   // assets/recipe-catalog.json. Do not hand-copy or trim the catalog. Disable
   // an unused recipe with `enabled: false`; keep its definition present.
-  "recipeCatalogVersion": 3,
+  "recipeCatalogVersion": 4,
   "usagePools": { "...canonical pools...": { "state": "available | spent" } },
   "recipes": { "...canonical recipes...": { "enabled": true } },
 
@@ -119,6 +119,7 @@ and fallback order. This table is only its human-readable route summary.
 | `grok-high-cursor` | `grok-high`, `glm-53` |
 | `kimi-k3-max` | operator alert; no successor configured |
 | `glm-53-opencode-go` | operator alert; no successor configured |
+| `qwen-36-plus-opencode-go` | operator alert; no successor configured |
 | `fable-max` | operator alert; no successor configured |
 | `opus-max` / `sol-max` | the other recipe |
 | `opus-xhigh` / `sol-xhigh` | the other recipe |
@@ -132,9 +133,9 @@ and fallback order. This table is only its human-readable route summary.
   quota window. Restore `available` only when that real window or credit pool
   is usable again.
 - Provider-specific routes use distinct recipes and capacity pools. Cursor
-  Kimi is `kimi-k3-max`; OpenCode Go GLM is `glm-53-opencode-go`. Do not
-  substitute a same-family model from another provider unless a recipe's
-  fallback list explicitly names it.
+  Kimi is `kimi-k3-max`; OpenCode Go GLM is `glm-53-opencode-go`; OpenCode Go
+  Qwen is `qwen-36-plus-opencode-go`. Do not substitute a same-family model
+  from another provider unless a recipe's fallback list explicitly names it.
 - A coordinator marks a pool `spent` only when the captured output
   conclusively says the usage window or credits are exhausted. Reset offers,
   remaining-usage notices, authentication failures, startup failures,
