@@ -401,10 +401,12 @@ def collect(args, now):
         scopes.add("board")
         try:
             board_at, config_at = args.board.stat().st_mtime, args.config.stat().st_mtime
-            if config_at - board_at > args.handoff_seconds + args.poll_grace:
-                fault("board", "BOARD-STALE relative to fleet config")
+            if config_at > board_at:
+                key, value = incident("board", "unavailable", "BOARD-STALE relative to fleet config")
+                issues[key] = {**value, "readyAt": min(config_at, now) + args.handoff_seconds + args.poll_grace}
         except OSError:
-            fault("board", "BOARD-MISSING or unreadable")
+            key, value = incident("board", "unavailable", "BOARD-MISSING or unreadable")
+            issues[key] = {**value, "readyAt": now}
     return issues, scopes
 
 
@@ -469,7 +471,10 @@ def checkpoint(args, now=None):
         findings = []
         for key, issue in issues.items():
             stored = previous.get(key, {})
-            ready = stored.get("readyAt", issue.get("readyAt", now)) <= now
+            deadline = stored.get("readyAt", issue.get("readyAt", now))
+            if issue["scope"] == "board":
+                deadline = min(deadline, issue.get("readyAt", now))
+            ready = deadline <= now
             confirmed = stored.get("observations", 0) + 1 >= issue.get("confirmations", 1)
             if ready and confirmed:
                 findings.append(issue["message"])
@@ -496,6 +501,11 @@ def checkpoint(args, now=None):
             if key not in alerts:
                 alerts[key] = {**issue, "status": "new", "attempts": 0,
                                "nextAttemptAt": now, "firstSeenAt": now, "observations": 0}
+            if issue["scope"] == "board":
+                # Later config writes cannot postpone this refresh window;
+                # a missing file must advance it without resetting delivery history.
+                alerts[key]["readyAt"] = min(alerts[key].get("readyAt", now), issue["readyAt"])
+                alerts[key]["message"] = issue["message"]
             alerts[key]["observations"] = alerts[key].get("observations", 0) + 1
         actionable = {key: alert for key, alert in alerts.items()
                       if alert.get("observations", 1) >= alert.get("confirmations", 1)

@@ -479,12 +479,94 @@ if 'agent' in sys.argv:
         self.args.board = self.root / "board"
         self.args.board.write_text("projection")
         os.utime(self.args.board, (self.now - 1000, self.now - 1000))
-        for elapsed in (0, 30, 60):
+        for elapsed in (0, 30, 60, 119):
+            os.utime(self.config_path, (self.now + elapsed, self.now + elapsed))
+            self.heartbeat.write_text(str(self.now + elapsed))
+            self.polls(now=self.now + elapsed)
+            self.assertEqual(self.calls(), [])
+        for elapsed in (121, 150, 180):
             os.utime(self.config_path, (self.now + elapsed, self.now + elapsed))
             self.heartbeat.write_text(str(self.now + elapsed))
             self.polls(now=self.now + elapsed)
         self.assertEqual(len(self.calls()), 1)
         self.assertIn("BOARD-STALE", self.calls()[0][-1])
+
+    def test_fresh_config_gives_old_correct_board_time_to_render(self):
+        self.args.board = self.root / "board"
+        self.args.board.write_text("projection")
+        os.utime(self.args.board, (self.now - 1000, self.now - 1000))
+        os.utime(self.config_path, (self.now - 1000, self.now - 1000))
+        self.polls(2)
+        self.assertEqual(self.calls(), [])
+        os.utime(self.config_path, (self.now, self.now))
+        self.polls(3)
+        self.assertEqual(self.calls(), [])
+        self.args.dry_run = True
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            watchdog.checkpoint(self.args, self.now)
+        self.assertEqual(output.getvalue(), "")
+        self.args.dry_run = False
+        self.heartbeat.write_text(str(self.now + 121))
+        self.polls(3, now=self.now + 121)
+        self.assertEqual(len(self.calls()), 1)
+        self.assertIn("BOARD-STALE", self.calls()[0][-1])
+        self.assertEqual(len(self.ledger()), 1)
+
+    def test_board_render_clears_and_rearms_refresh_grace(self):
+        self.args.board = self.root / "board"
+        self.args.board.write_text("projection")
+        os.utime(self.args.board, (self.now - 1000, self.now - 1000))
+        os.utime(self.config_path, (self.now - 500, self.now - 500))
+        self.polls()
+        self.assertEqual(len(self.calls()), 1)
+        os.utime(self.args.board, (self.now, self.now))
+        self.polls()
+        self.assertEqual(self.ledger(), {})
+        os.utime(self.config_path, (self.now + 1, self.now + 1))
+        self.heartbeat.write_text(str(self.now + 1))
+        self.polls(now=self.now + 1)
+        self.assertEqual(len(self.calls()), 1)
+        self.heartbeat.write_text(str(self.now + 122))
+        self.polls(3, now=self.now + 122)
+        self.assertEqual(len(self.calls()), 2)
+
+    def test_missing_board_is_immediate_even_during_refresh_grace(self):
+        self.args.board = self.root / "board"
+        self.args.board.write_text("projection")
+        os.utime(self.args.board, (self.now - 1000, self.now - 1000))
+        os.utime(self.config_path, (self.now, self.now))
+        self.polls()
+        self.assertEqual(self.calls(), [])
+        self.args.board.unlink()
+        self.args.dry_run = True
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            watchdog.checkpoint(self.args, self.now)
+        self.assertIn("BOARD-MISSING", output.getvalue())
+        self.args.dry_run = False
+        self.polls(3)
+        self.assertEqual(len(self.calls()), 1)
+        self.assertIn("BOARD-MISSING", self.calls()[0][-1])
+
+    def test_existing_board_alert_history_is_preserved(self):
+        self.args.board = self.root / "board"
+        self.args.board.write_text("projection")
+        os.utime(self.args.board, (self.now - 1000, self.now - 1000))
+        os.utime(self.config_path, (self.now - 500, self.now - 500))
+        self.polls()
+        path = self.root / "watchdog.alerts.json"
+        data = json.loads(path.read_text())
+        for alert in data["alerts"].values():
+            alert.pop("readyAt", None)
+        path.write_text(json.dumps(data))
+        os.utime(self.config_path, (self.now, self.now))
+        self.polls(3)
+        self.assertEqual(len(self.calls()), 1)
+        current = self.ledger()
+        self.assertEqual(set(current), set(data["alerts"]))
+        self.assertEqual(next(iter(current.values()))["attempts"], 1)
+        self.assertEqual(next(iter(current.values()))["status"], "sent")
 
     def test_local_health_metrics_require_no_queue(self):
         self.polls(3)
