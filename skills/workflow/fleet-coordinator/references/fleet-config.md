@@ -35,7 +35,7 @@ start while the canonical catalog is missing or drifted.
   // `fleet recipes sync` installs these sections from the skill's canonical
   // assets/recipe-catalog.json. Do not hand-copy or trim the catalog. Disable
   // an unused recipe with `enabled: false`; keep its definition present.
-  "recipeCatalogVersion": 4,
+  "recipeCatalogVersion": 5,
   "usagePools": { "...canonical pools...": { "state": "available | spent" } },
   "recipes": { "...canonical recipes...": { "enabled": true } },
 
@@ -118,8 +118,8 @@ and fallback order. This table is only its human-readable route summary.
 | `glm-53` | `grok-high`, `grok-high-cursor` |
 | `grok-high-cursor` | `grok-high`, `glm-53` |
 | `kimi-k3-max` | operator alert; no successor configured |
-| `glm-53-opencode-go` | operator alert; no successor configured |
-| `qwen-36-plus-opencode-go` | operator alert; no successor configured |
+| `glm-53-opencode-go` | `glm-53` |
+| `qwen-36-plus-opencode-go` | `glm-53` |
 | `fable-max` | operator alert; no successor configured |
 | `opus-max` / `sol-max` | the other recipe |
 | `opus-xhigh` / `sol-xhigh` | the other recipe |

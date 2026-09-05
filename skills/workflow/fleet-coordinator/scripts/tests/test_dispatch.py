@@ -1045,7 +1045,7 @@ class RecipeCatalogTests(unittest.TestCase):
         drift = fleet.sync_recipe_catalog(config)
 
         self.assertIn("missing recipe grok-xhigh-cursor", drift)
-        self.assertEqual(config["recipeCatalogVersion"], 4)
+        self.assertEqual(config["recipeCatalogVersion"], 5)
         self.assertEqual(
             config["recipes"]["grok-xhigh"]["fallbacks"],
             ["grok-xhigh-cursor", "glm-53"],
@@ -1061,7 +1061,7 @@ class RecipeCatalogTests(unittest.TestCase):
     def test_catalog_contains_fable_51_max_recipe(self) -> None:
         catalog = fleet.load_recipe_catalog()
 
-        self.assertEqual(catalog["version"], 4)
+        self.assertEqual(catalog["version"], 5)
         self.assertEqual(
             catalog["usagePools"]["anthropic-fable"], {"state": "available"}
         )
@@ -1107,7 +1107,7 @@ class RecipeCatalogTests(unittest.TestCase):
                 "kind": "opencode",
                 "enabled": True,
                 "usagePool": "opencode-go",
-                "fallbacks": [],
+                "fallbacks": ["glm-53"],
                 "args": ["--model", "opencode-go/glm-5.3", "--auto"],
             },
         )
@@ -1117,10 +1117,21 @@ class RecipeCatalogTests(unittest.TestCase):
                 "kind": "opencode",
                 "enabled": True,
                 "usagePool": "opencode-go",
-                "fallbacks": [],
+                "fallbacks": ["glm-53"],
                 "args": ["--model", "opencode-go/qwen3.6-plus", "--auto"],
             },
         )
+
+    def test_opencode_go_recipes_fallback_to_direct_glm(self) -> None:
+        config = {"usagePools": {}, "recipes": {}}
+        fleet.sync_recipe_catalog(config)
+        config["usagePools"]["opencode-go"]["state"] = "spent"
+
+        for recipe in ("glm-53-opencode-go", "qwen-36-plus-opencode-go"):
+            requested, selected, _ = fleet.recipe_choice_for_stream(
+                config, {"implRecipe": recipe}, "impl"
+            )
+            self.assertEqual((requested, selected), (recipe, "glm-53"))
 
     def test_recipes_cli_sync_then_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

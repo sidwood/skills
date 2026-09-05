@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "usagePools": {
     "cursor-composer": { "state": "available" },
     "cursor-grok": { "state": "available" },
@@ -78,14 +78,14 @@
       "kind": "opencode",
       "enabled": true,
       "usagePool": "opencode-go",
-      "fallbacks": [],
+      "fallbacks": ["glm-53"],
       "args": ["--model", "opencode-go/glm-5.3", "--auto"]
     },
     "qwen-36-plus-opencode-go": {
       "kind": "opencode",
       "enabled": true,
       "usagePool": "opencode-go",
-      "fallbacks": [],
+      "fallbacks": ["glm-53"],
       "args": ["--model", "opencode-go/qwen3.6-plus", "--auto"]
     },
     "fable-max": {
