@@ -39,6 +39,19 @@ you.
    dispatch. Severity is judged against that context, never against an
    imagined production load.
 
+## Workspace layout
+
+- Reserve each workspace's first default tab and pane, labeled `1`, for the
+  Operator. The initial pane returned by workspace creation is not an agent
+  slot; never launch an agent there or repurpose it during recovery.
+- Create a separate coordinator tab labeled `Coordinator` and set its pane
+  label to `Coordinator` before starting the coordinator. These are display
+  labels; keep the agent identifier unique across projects.
+- Give every worker its own new tab. On adoption, verify the Operator's
+  reservation and the coordinator labels; preserve Operator state when moving
+  an existing agent out of the reserved pane. Record the reserved tab/pane IDs
+  and coordinator location in the handover so successors preserve the layout.
+
 ## Workflow
 
 1. Watch agent settles (monitor or poll). Pass a monitor event ID unchanged to
