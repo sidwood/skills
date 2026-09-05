@@ -1,6 +1,6 @@
 ---
 name: fleet-coordinator
-description: Use when coordinating a fleet of coding agents against task state or an optional ticket board — dispatching implementers or reviewers in a Herdr session, handling REVIEW-READY or APPROVE verdicts, bouncing, or landing branch clones — or when the user asks to run the fleet, work the board, or hand the ticket loop to an orchestrator.
+description: Use when coordinating a fleet of coding agents against task state or an optional ticket board — dispatching implementers or reviewers in a Herdr workspace, handling REVIEW-READY or APPROVE verdicts, bouncing, or landing branch clones — or when the user asks to run the fleet, work the board, or hand the ticket loop to an orchestrator.
 ---
 
 # Fleet Coordinator
@@ -23,10 +23,12 @@ you.
 1. Locate the project's fleet config (by default
    `<seed>/temp/fleet/fleet.json`, or the path project instructions name). It
    owns every binding: seed repository path, Herdr
-   session name, agent recipes, recipe enable switches and usage-pool state,
-   reviewer pairing rules, verification gate commands, deployment context,
-   land policy, bounce cap, and per-ticket stream state. To create or migrate
-   one, read
+   workspace ID, optional shared session name, agent recipes, recipe enable
+   switches and usage-pool state, reviewer pairing rules, verification gate
+   commands, deployment context, land policy, bounce cap, and per-ticket
+   stream state. Give each project one workspace inside the shared Herdr
+   session; never create a project-named session for isolation. Omit `session`
+   to use Herdr's default session. To create or migrate one, read
    [references/fleet-config.md](references/fleet-config.md).
 2. Run `fleet recipes sync` after creating or adopting the config, then run
    `fleet recipes check`. The packaged catalog owns recipe kinds, launch
@@ -136,7 +138,8 @@ you.
   the exact event has `closedAt`, `teardownResolvedAt`, or kind
   `resolved-lost-output`, or its exact correlated lane is `closed` or
   `resolved`.
-- Fresh tab and agent per dispatch; never reuse a settled pane.
+- Fresh tab and workspace-namespaced agent per dispatch; create every tab in
+  the configured project workspace and never reuse a settled pane.
 - Resolve a dispatch recipe from its requested recipe plus that recipe's
   ordered, flat fallback list. Skip any recipe with `enabled: false` or a
   `spent` usage pool, record both requested and selected recipes on the lane,

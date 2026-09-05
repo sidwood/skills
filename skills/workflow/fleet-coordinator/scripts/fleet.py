@@ -802,10 +802,41 @@ def parse_capture(text: str, role: str, checkout: Path | None = None) -> Capture
     )
 
 
+def herdr_workspace(config: dict[str, Any]) -> str:
+    workspace = config.get("workspace")
+    if not isinstance(workspace, str) or not workspace.strip():
+        raise FleetError(
+            "missing required Herdr workspace ID in fleet config; "
+            "list or create the project workspace and set workspace"
+        )
+    return workspace
+
+
+def herdr_item_workspace(item: dict[str, Any]) -> str | None:
+    workspaces: set[str] = set()
+    if "workspace_id" in item:
+        workspace = item["workspace_id"]
+        if not isinstance(workspace, str) or not workspace:
+            raise FleetError("Herdr item has an invalid workspace_id")
+        workspaces.add(workspace)
+    for key in ("pane_id", "tab_id"):
+        value = item.get(key)
+        if isinstance(value, str) and ":" in value:
+            workspace = value.split(":", 1)[0]
+            if workspace:
+                workspaces.add(workspace)
+    if len(workspaces) > 1:
+        raise FleetError("Herdr item has conflicting workspace identities")
+    return next(iter(workspaces), None)
+
+
 def herdr_base(config: dict[str, Any]) -> list[str]:
     cmd = ["herdr"]
-    if os.environ.get("HERDR_ENV") != "1":
-        cmd.extend(["--session", config["session"]])
+    session = config.get("session")
+    if session is not None and not isinstance(session, str):
+        raise FleetError("Herdr session must be a string when configured")
+    if os.environ.get("HERDR_ENV") != "1" and session:
+        cmd.extend(["--session", session])
     return cmd
 
 
@@ -1585,6 +1616,7 @@ def drift_warnings(config: dict[str, Any], stream: dict[str, Any], agents: list[
 
 
 def herdr_agent_list(config: dict[str, Any], dry_run: bool = False) -> list[dict[str, Any]]:
+    workspace = herdr_workspace(config)
     cmd = herdr_base(config) + ["agent", "list"]
     if dry_run:
         run_cmd(cmd, dry_run=True)
@@ -1598,9 +1630,19 @@ def herdr_agent_list(config: dict[str, Any], dry_run: bool = False) -> list[dict
     result_body = payload.get("result")
     if isinstance(result_body, dict):
         agents = result_body.get("agents", [])
-        return agents if isinstance(agents, list) else []
+        if not isinstance(agents, list):
+            return []
+        return [
+            agent
+            for agent in agents
+            if isinstance(agent, dict) and herdr_item_workspace(agent) == workspace
+        ]
     if isinstance(result_body, list):
-        return result_body
+        return [
+            agent
+            for agent in result_body
+            if isinstance(agent, dict) and herdr_item_workspace(agent) == workspace
+        ]
     return []
 
 
@@ -1751,7 +1793,9 @@ def next_dispatch_number(stream: dict[str, Any], role: str) -> int:
     return current + 1
 
 
-def derive_agent_name(ticket: str, role: str, dispatch_number: int) -> str:
+def derive_agent_name(
+    ticket: str, role: str, dispatch_number: int, namespace: str = ""
+) -> str:
     if role not in ("impl", "review"):
         raise FleetError(f"unknown dispatch role: {role}")
     if dispatch_number < 1:
@@ -1759,7 +1803,8 @@ def derive_agent_name(ticket: str, role: str, dispatch_number: int) -> str:
 
     canonical_ticket = ticket.lower()
     slug = canonical_ticket.replace(".", "-")
-    ticket_hash = hashlib.sha256(canonical_ticket.encode()).hexdigest()[:8]
+    identity = f"{namespace}\0{canonical_ticket}" if namespace else canonical_ticket
+    ticket_hash = hashlib.sha256(identity.encode()).hexdigest()[:8]
     suffix = f"-{ticket_hash}-{role}-{dispatch_number}"
     slug = re.sub(r"[^a-z0-9_-]", "-", slug)
     slug = re.sub(r"-+", "-", slug).strip("-")
@@ -1843,9 +1888,12 @@ def herdr_tab_create(
     label: str,
     dry_run: bool = False,
 ) -> dict[str, str]:
+    workspace = herdr_workspace(config)
     cmd = herdr_base(config) + [
         "tab",
         "create",
+        "--workspace",
+        workspace,
         "--cwd",
         cwd,
         "--label",
@@ -1867,6 +1915,16 @@ def herdr_tab_create(
     pane_id = root.get("pane_id")
     if not tab_id or not pane_id:
         raise FleetError("tab create missing tab_id or pane_id")
+    created_workspaces = {
+        candidate
+        for candidate in (herdr_item_workspace(tab), herdr_item_workspace(root))
+        if candidate is not None
+    }
+    if created_workspaces != {workspace}:
+        raise FleetError(
+            f"tab created with workspace identities {sorted(created_workspaces)!r}, "
+            f"expected only {workspace!r}"
+        )
     return {"tab_id": tab_id, "pane_id": pane_id}
 
 
@@ -2188,7 +2246,9 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
     stream = find_stream(config, args.ticket)
     role = args.role
     dispatch_number = next_dispatch_number(stream, role)
-    name = derive_agent_name(args.ticket, role, dispatch_number)
+    name = derive_agent_name(
+        args.ticket, role, dispatch_number, namespace=herdr_workspace(config)
+    )
     requested_recipe, recipe_key, recipe = recipe_choice_for_stream(
         config, stream, role
     )

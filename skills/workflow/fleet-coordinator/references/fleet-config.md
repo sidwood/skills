@@ -2,9 +2,11 @@
 
 One machine-readable file per project owns every binding and all live ticket
 state. Its default path is `<seed>/temp/fleet/fleet.json`, under a gitignored
-`temp/` directory. The skill never hardcodes what this file owns. Verified
-live values (current seed tip, agent status) always come from git and Herdr,
-not from this file.
+`temp/` directory. The skill never hardcodes what this file owns. Each project
+has one Herdr workspace inside the shared session; a session name is optional
+and exists only to select a non-default shared session. Verified live values
+(current seed tip, agent status) always come from git and Herdr, not from this
+file.
 
 The CLI resolves the file in this order: `--config`, `FLEET_CONFIG`,
 `$FLEET_STATE_DIR/fleet.json`, then
@@ -28,7 +30,9 @@ start while the canonical catalog is missing or drifted.
 {
   "seed": "/abs/path/to/seed-repo",
   "seedDefaultBranch": "main",
-  "session": "herdr-session-name",
+  "workspace": "w1",
+  // Optional. Omit this key to use Herdr's default session.
+  "session": "shared-herdr-session",
   "user": "name pasted into prompts with deployment context",
   "deploymentContext": "Target environment, who uses it, what P0-P2 means here. Pasted into every prompt.",
 
@@ -233,6 +237,17 @@ duplicating an ID across streams fails.
 The operator must establish that both reads failed before running
 `resolve-event`; the command records the supplied resolution but does not
 probe Herdr itself.
+
+## Migration from project-named Herdr sessions
+
+Migrate at a quiet boundary with no live fleet agents. Choose the shared Herdr
+session, omitting its name when it is the default session. Find or create one
+workspace for the project, record its returned ID as `workspace`, then remove
+the old project-specific `session` value or replace it with the shared session
+name. Set the orchestrator's `FLEET_WORKSPACE` to the same ID and rearm the
+workspace-filtered monitor. Relaunch the coordinator under its
+workspace-unique name before dispatching new work. Do not delete the old
+session as part of migration; session cleanup is a separate operator action.
 
 ## Migration from an instance-keyed recipes table
 

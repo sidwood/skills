@@ -2,6 +2,7 @@
   "seed": "/tmp/fleet-seed",
   "seedDefaultBranch": "main",
   "session": "test-session",
+  "workspace": "w1",
   "user": "tester",
   "deploymentContext": "Local dev; P0 is data loss.",
   "recipes": {

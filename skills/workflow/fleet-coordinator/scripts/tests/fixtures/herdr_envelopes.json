@@ -8,14 +8,16 @@
           "agent_status": "idle",
           "name": "t094-1-impl",
           "pane_id": "w1:p1",
-          "tab_id": "w1:t1"
+          "tab_id": "w1:t1",
+          "workspace_id": "w1"
         },
         {
           "agent": "claude",
           "agent_status": "done",
           "name": "t094-1-review",
           "pane_id": "w1:p2",
-          "tab_id": "w1:t2"
+          "tab_id": "w1:t2",
+          "workspace_id": "w1"
         }
       ],
       "type": "agent_list"

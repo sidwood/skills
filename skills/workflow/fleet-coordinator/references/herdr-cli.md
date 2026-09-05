@@ -1,17 +1,25 @@
 # Herdr CLI mechanics
 
-Herdr is generic; project bindings (session name, recipes, paths) come from
-the fleet config. On syntax drift, inspect `herdr --help` and the relevant
-command group — the binary wins over this document.
+Herdr is generic; project bindings (workspace ID, optional shared session
+name, recipes, paths) come from the fleet config. On syntax drift, inspect
+`herdr --help` and the relevant command group — the binary wins over this
+document.
 
-## Session and inventory
+## Session, workspace, and inventory
 
-- If `HERDR_ENV=1`, keep inherited session and caller IDs. Otherwise run
-  `herdr session list --json`, choose one, and pass `--session <name>` on
-  every call; never default when unclear.
-- `herdr api snapshot` inventories workspaces, tabs, panes, and agents.
-- `herdr agent list` and `herdr tab list` return JSON; use only IDs returned
-  by these calls.
+- Use one long-lived Herdr session for all projects. A project is isolated by
+  its workspace, not by a project-named session.
+- If the config has a non-empty `session`, pass `--session <name>` on calls
+  made outside Herdr. If it is absent, omit the flag and use Herdr's default
+  session. When `HERDR_ENV=1`, keep the inherited session.
+- Run `herdr workspace list` in that session and record the project's returned
+  workspace ID in `fleet.json`. If it does not exist, create it once with
+  `herdr workspace create --cwd <seed> --label <project> --no-focus` and use
+  `.result.workspace.workspace_id`; never predict an ID from the label.
+- `herdr api snapshot` inventories workspaces, tabs, panes, and agents. Filter
+  the session-wide agent inventory to the configured workspace before acting.
+- `herdr agent list` and `herdr tab list --workspace <workspace-id>` return
+  JSON; use only IDs returned by these calls and never rely on UI focus.
 
 ## Dispatch
 
@@ -28,17 +36,18 @@ Automatic monitor recovery starts at `prompting`. A crash in `reserved`,
 CLI refuses a same-role replacement rather than guessing which side effect
 completed.
 
-1. `herdr tab create --cwd <clone> --label "<ticket> <role>" --no-focus` —
-   take the pane ID from `.result.root_pane.pane_id`.
+1. `herdr tab create --workspace <workspace-id> --cwd <clone> --label
+   "<ticket> <role>" --no-focus` — take the pane ID from
+   `.result.root_pane.pane_id` and verify the returned workspace ID.
 2. If the selected recipe has `envPreStep`, send that trusted config command
    to the fresh pane and wait for its completion marker. GLM 5.3 uses this to
    load `$HOME/.claude-glm/lane.env`; a failure stops dispatch.
 3. `herdr agent start <name> --kind <kind> --pane <pane-id> --timeout 120000
    -- <recipe args>` — kind and args come from the fleet config's recipes.
-   Agent names match `[a-z][a-z0-9_-]{0,31}` — no dots. A stable ticket hash
-   prevents normalized or truncated ticket IDs from colliding; the per-role
-   dispatch counter gives every attempt a fresh suffix. Start agents directly;
-   wrappers break agent detection.
+   Agent names match `[a-z][a-z0-9_-]{0,31}` — no dots. A stable
+   workspace-plus-ticket hash prevents both cross-project and truncated-ticket
+   collisions; the per-role dispatch counter gives every attempt a fresh
+   suffix. Start agents directly; wrappers break agent detection.
 4. `herdr agent prompt <name> "$(cat <prompt file>)" --wait --until working
    --timeout 60000`.
 

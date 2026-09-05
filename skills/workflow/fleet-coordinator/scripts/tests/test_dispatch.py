@@ -63,6 +63,130 @@ class DispatchTests(unittest.TestCase):
         self.assertNotEqual(punctuation_a, punctuation_b)
         self.assertNotEqual(long_a, long_b)
 
+    def test_workspace_namespace_prevents_cross_project_agent_collisions(self) -> None:
+        first = fleet.derive_agent_name("T094.1", "impl", 1, namespace="w1")
+        second = fleet.derive_agent_name("T094.1", "impl", 1, namespace="w2")
+
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.endswith("-996584d9-impl-1"))
+        self.assertTrue(second.endswith("-721e536b-impl-1"))
+
+    def test_herdr_base_uses_default_session_when_unnamed(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fleet.herdr_base({"workspace": "w1"}), ["herdr"])
+
+    def test_herdr_base_uses_named_session_outside_herdr(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                fleet.herdr_base({"session": "shared", "workspace": "w1"}),
+                ["herdr", "--session", "shared"],
+            )
+
+    def test_herdr_base_keeps_inherited_session_inside_herdr(self) -> None:
+        with mock.patch.dict(os.environ, {"HERDR_ENV": "1"}, clear=True):
+            self.assertEqual(
+                fleet.herdr_base({"session": "shared", "workspace": "w1"}),
+                ["herdr"],
+            )
+
+    @mock.patch("fleet.run_cmd")
+    def test_tab_creation_targets_the_project_workspace(
+        self, mock_run: mock.Mock
+    ) -> None:
+        with open(FIXTURES / "fleet.json") as fh:
+            config = json.load(fh)
+
+        fleet.herdr_tab_create(config, "/tmp/clone", "T1 impl", dry_run=True)
+
+        command = mock_run.call_args.args[0]
+        self.assertEqual(
+            command[command.index("--workspace") : command.index("--workspace") + 2],
+            ["--workspace", "w1"],
+        )
+
+    def test_tab_creation_requires_a_project_workspace(self) -> None:
+        with self.assertRaisesRegex(fleet.FleetError, "workspace ID"):
+            fleet.herdr_tab_create({}, "/tmp/clone", "T1 impl", dry_run=True)
+
+    @mock.patch("fleet.run_cmd")
+    def test_tab_creation_rejects_conflicting_tab_and_pane_workspaces(
+        self, mock_run: mock.Mock
+    ) -> None:
+        mock_run.return_value = completed(
+            ["herdr"],
+            stdout=herdr_json(
+                {
+                    "result": {
+                        "tab": {"tab_id": "w1:t9", "workspace_id": "w1"},
+                        "root_pane": {
+                            "pane_id": "w2:p9",
+                            "workspace_id": "w2",
+                        },
+                    }
+                }
+            ),
+        )
+
+        with self.assertRaisesRegex(fleet.FleetError, "workspace identities"):
+            fleet.herdr_tab_create(
+                {"workspace": "w1"}, "/tmp/clone", "T1 impl"
+            )
+
+    @mock.patch("fleet.run_cmd")
+    def test_tab_creation_rejects_wrong_workspace_from_qualified_ids(
+        self, mock_run: mock.Mock
+    ) -> None:
+        mock_run.return_value = completed(
+            ["herdr"],
+            stdout=herdr_json(
+                {
+                    "result": {
+                        "tab": {"tab_id": "w2:t9"},
+                        "root_pane": {"pane_id": "w2:p9"},
+                    }
+                }
+            ),
+        )
+
+        with self.assertRaisesRegex(fleet.FleetError, "workspace identities"):
+            fleet.herdr_tab_create(
+                {"workspace": "w1"}, "/tmp/clone", "T1 impl"
+            )
+
+    def test_inventory_identity_rejects_conflicting_workspace_metadata(self) -> None:
+        with self.assertRaisesRegex(fleet.FleetError, "conflicting workspace"):
+            fleet.herdr_item_workspace(
+                {"workspace_id": "w1", "pane_id": "w2:p4"}
+            )
+
+    @mock.patch("subprocess.run")
+    def test_agent_inventory_is_filtered_to_the_project_workspace(
+        self, mock_run: mock.Mock
+    ) -> None:
+        mock_run.return_value = completed(
+            ["herdr"],
+            stdout=herdr_json(
+                {
+                    "result": {
+                        "agents": [
+                            {
+                                "name": "current-worker",
+                                "pane_id": "w1:p4",
+                            },
+                            {
+                                "name": "other-worker",
+                                "tab_id": "w2:t8",
+                            },
+                        ]
+                    }
+                }
+            ),
+        )
+
+        agents = fleet.herdr_agent_list({"workspace": "w1"})
+
+        self.assertEqual([agent["name"] for agent in agents], ["current-worker"])
+
     @mock.patch("subprocess.run")
     def test_dispatch_dry_run(self, mock_run: mock.Mock) -> None:
         mock_run.side_effect = make_herdr_run_handler().side_effect
@@ -147,21 +271,21 @@ class DispatchTests(unittest.TestCase):
         stream = config["streams"][0]
         self.assertEqual(stream["dispatchCounters"], {"impl": 2, "review": 2})
         self.assertEqual(
-            stream["agents"]["impl"]["name"], "t094-1-73421147-impl-2"
+            stream["agents"]["impl"]["name"], "t094-1-996584d9-impl-2"
         )
         self.assertEqual(stream["agents"]["impl"]["dispatchNumber"], 2)
         self.assertEqual(
-            stream["agents"]["review"]["name"], "t094-1-73421147-review-2"
+            stream["agents"]["review"]["name"], "t094-1-996584d9-review-2"
         )
         self.assertEqual(stream["agents"]["review"]["dispatchNumber"], 2)
         started_names = [call.args[1] for call in mock_agent_start.call_args_list]
         self.assertEqual(
             started_names,
             [
-                "t094-1-73421147-impl-1",
-                "t094-1-73421147-impl-2",
-                "t094-1-73421147-review-1",
-                "t094-1-73421147-review-2",
+                "t094-1-996584d9-impl-1",
+                "t094-1-996584d9-impl-2",
+                "t094-1-996584d9-review-1",
+                "t094-1-996584d9-review-2",
             ],
         )
 
@@ -187,7 +311,7 @@ class DispatchTests(unittest.TestCase):
         stream = json.loads(self.config_path.read_text())["streams"][0]
         self.assertEqual(stream["dispatchCounters"]["impl"], 1)
         self.assertEqual(
-            stream["agents"]["impl"]["name"], "t094-1-73421147-impl-1"
+            stream["agents"]["impl"]["name"], "t094-1-996584d9-impl-1"
         )
         self.assertEqual(stream["agents"]["impl"]["dispatchState"], "reserved")
         with self.assertRaisesRegex(
@@ -522,7 +646,7 @@ class DispatchTests(unittest.TestCase):
         stream = json.loads(self.config_path.read_text())["streams"][0]
         self.assertEqual(stream["phase"], "review-2")
         self.assertEqual(
-            stream["agents"]["review"]["name"], "t094-1-73421147-review-2"
+            stream["agents"]["review"]["name"], "t094-1-996584d9-review-2"
         )
 
     @mock.patch("fleet.herdr_agent_prompt")
