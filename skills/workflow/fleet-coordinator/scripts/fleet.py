@@ -2716,13 +2716,24 @@ def mutates_config(args: argparse.Namespace) -> bool:
     return args.command == "verdict" and bool(args.commit)
 
 
+def refresh_board(path: Path) -> None:
+    config = load_config(path)
+    command = config.get("boardRefreshCommand")
+    if not command:
+        return
+    run_cmd(command, cwd=Path(config["seed"]))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         if mutates_config(args):
-            with config_lock(config_path_from_args(args)):
-                return args.func(args)
+            path = config_path_from_args(args)
+            with config_lock(path):
+                result = args.func(args)
+            refresh_board(path)
+            return result
         return args.func(args)
     except FleetError as exc:
         print(str(exc), file=sys.stderr)
