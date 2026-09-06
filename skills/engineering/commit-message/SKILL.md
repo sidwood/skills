@@ -31,5 +31,6 @@ the two run together.
 
 ## Rules
 
+- Omit internal ticket identifiers from subjects and bodies; describe the change in plain language instead.
 - Imperative mood matches git's own messages (`git merge`, `git revert`).
 - 72-character body wrap → clean `git log` on 80-column terminals.
