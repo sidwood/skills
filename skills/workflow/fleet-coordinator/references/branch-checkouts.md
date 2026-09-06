@@ -9,10 +9,12 @@
 2. From the configured seed and the stream's `branch`, run
    `fleet checkout TICKET`. It calls `git bc-add --offline SEED BRANCH` and
    records the tool's default sibling checkout path, exact base, and creation
-   command. BC owns extras synchronization and configured post-add hooks;
-   inspect its output because a failed post-add hook can warn without a
-   nonzero exit. Do not supply a nested replacement target or bypass those
-   steps with a homemade script.
+   command. Honor the configured branch and sibling-checkout naming
+   conventions before creation; do not invent prefixes or namespaces
+   absent from project configuration. BC owns extras synchronization
+   and configured post-add hooks; inspect its output because a failed
+   post-add hook can warn without a nonzero exit. Do not supply a nested
+   replacement target or bypass those steps with a homemade script.
 3. Check the resulting branch, accepted seed base, clean worktree, dependencies,
    and ignored prerequisites. Run `fleet checkouts check` before dispatch.
    The dispatch command repeats checkout validation before changing fleet
