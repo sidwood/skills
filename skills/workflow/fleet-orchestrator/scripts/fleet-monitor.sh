@@ -545,8 +545,16 @@ try:
             # prompt delivery, closing the accepted-prompt/process-crash gap.
             # A legacy record without dispatchState is active unless an event
             # already proves its output was captured.
-            monitorable = state in {"prompting", "active"} or (
-                not state and name not in captured
+            # Captured-and-closed reviewers are absent on purpose; do not
+            # emit @missing for an exact closed captureEventId.
+            captured_closed = (
+                record.get("closedAt")
+                and record.get("captureEventId")
+                and record.get("captureKind") in {"verdict", "review-ready"}
+            )
+            monitorable = (not captured_closed) and (
+                state in {"prompting", "active"}
+                or (not state and name not in captured)
             )
             if name and monitorable and name not in live:
                 missing.append(name)

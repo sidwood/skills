@@ -233,6 +233,12 @@ def inspect_streams(config, live, now, args):
             if state in STARTING:
                 if age > args.handoff_seconds + args.poll_grace:
                     add("lane", [ticket, name, "starting"], f"STARTING-STUCK {ticket} {name}")
+            elif record.get("closedAt") and record.get("captureEventId") and record.get("captureKind") in {
+                "verdict",
+                "review-ready",
+            }:
+                # Captured-and-closed reviewers are absent on purpose. Not LANE-MISSING.
+                continue
             elif name not in live:
                 add("lane", [ticket, name, "missing"], f"LANE-MISSING {ticket} {name}")
             elif live[name]["agent_status"] == "starting" and age > args.handoff_seconds + args.poll_grace:
