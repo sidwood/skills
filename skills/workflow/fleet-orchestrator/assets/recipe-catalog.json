@@ -1,9 +1,9 @@
 {
-  "version": 5,
+  "version": 6,
   "usagePools": {
     "cursor-composer": { "state": "available" },
     "cursor-grok": { "state": "available" },
-    "cursor-kimi": { "state": "available" },
+    "kimi": { "state": "available" },
     "grok-native": { "state": "available" },
     "glm": { "state": "available" },
     "opencode-go": { "state": "available" },
@@ -60,11 +60,12 @@
       "args": ["--model", "cursor-grok-4.6-high", "-f"]
     },
     "kimi-k3-max": {
-      "kind": "cursor",
+      "kind": "kimi",
       "enabled": true,
-      "usagePool": "cursor-kimi",
+      "usagePool": "kimi",
       "fallbacks": [],
-      "args": ["--model", "kimi-k3-max", "-f"]
+      "envPreStep": "export KIMI_MODEL_THINKING_EFFORT=max",
+      "args": ["--model", "kimi-code/k3", "--auto"]
     },
     "glm-53": {
       "kind": "claude",

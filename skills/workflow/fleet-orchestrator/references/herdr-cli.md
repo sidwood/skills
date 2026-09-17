@@ -44,6 +44,8 @@ completed.
    load `$HOME/.claude-glm/lane.env`; a failure stops dispatch.
 3. `herdr agent start <name> --kind <kind> --pane <pane-id> --timeout 120000
    -- <recipe args>` — kind and args come from the fleet config's recipes.
+   Kimi recipes use kind `kimi` (the direct `kimi` executable) and pass
+   `--auto` for Never Ask. Do not launch Kimi as kind `cursor`.
    Agent names match `[a-z][a-z0-9_-]{0,31}` — no dots. A stable
    workspace-plus-ticket hash prevents both cross-project and truncated-ticket
    collisions; the per-role dispatch counter gives every attempt a fresh

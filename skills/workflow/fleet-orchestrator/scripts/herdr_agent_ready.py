@@ -22,6 +22,8 @@ TRUST_DIALOGS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("1", "enter"),
     ),
     "cursor": (("workspace trust",), ("a",)),
+    # No known one-time chooser. Present so custom lanes can pass kind kimi.
+    "kimi": ((), ()),
 }
 
 

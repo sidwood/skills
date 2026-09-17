@@ -43,7 +43,7 @@ receipts and the exact operator-authorized legacy continuation schema.
   // `fleet recipes sync` installs these sections from the skill's canonical
   // assets/recipe-catalog.json. Do not hand-copy or trim the catalog. Disable
   // an unused recipe with `enabled: false`; keep its definition present.
-  "recipeCatalogVersion": 5,
+  "recipeCatalogVersion": 6,
   "usagePools": { "...canonical pools...": { "state": "available | spent" } },
   "recipes": { "...canonical recipes...": { "enabled": true } },
 
@@ -140,10 +140,17 @@ and fallback order. This table is only its human-readable route summary.
 - `usagePools.<name>.state: spent` removes every recipe charged to that
   quota window. Restore `available` only when that real window or credit pool
   is usable again.
-- Provider-specific routes use distinct recipes and capacity pools. Cursor
-  Kimi is `kimi-k3-max`; OpenCode Go GLM is `glm-53-opencode-go`; OpenCode Go
-  Qwen is `qwen-36-plus-opencode-go`. Do not substitute a same-family model
-  from another provider unless a recipe's fallback list explicitly names it.
+- Provider-specific routes use distinct recipes and capacity pools. Direct
+  Kimi is `kimi-k3-max` (Herdr kind `kimi`, the `kimi` executable). Any other
+  Kimi version uses that same kind and the direct CLI, never Cursor. OpenCode
+  Go GLM is `glm-53-opencode-go`; OpenCode Go Qwen is
+  `qwen-36-plus-opencode-go`. Do not substitute a same-family model from
+  another provider unless a recipe's fallback list explicitly names it.
+- `kimi-k3-max` starts with `--model kimi-code/k3 --auto`. `--auto` is Never
+  Ask: the unattended equivalent of skipping permissions. Do not pass
+  `--yolo`; that mode still stops for risky actions, questions, and plans.
+  The login alias `kimi-code/k3` has no max-effort flag, so the recipe's
+  `envPreStep` exports `KIMI_MODEL_THINKING_EFFORT=max` before startup.
 - You mark a pool `spent` only when the captured output
   conclusively says the usage window or credits are exhausted. Reset offers,
   remaining-usage notices, authentication failures, startup failures,
@@ -165,8 +172,9 @@ and fallback order. This table is only its human-readable route summary.
   silently replace an active lane. Each lane records both `requestedRecipe`
   and the recipe actually selected.
 - `envPreStep` is trusted project configuration run in the new pane before
-  agent startup. GLM 5.3 uses it to load the lane-specific environment; a
-  failure stops dispatch rather than falling through as if quota were spent.
+  agent startup. GLM 5.3 uses it to load the lane-specific environment. Kimi
+  K3 Max uses it to force max thinking effort. A failure stops dispatch
+  rather than falling through as if quota were spent.
 
 `dispatchCounters` is per stream and per role. Missing counters start at zero,
 so existing configs migrate lazily. A real dispatch reserves the new number

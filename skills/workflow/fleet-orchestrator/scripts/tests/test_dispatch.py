@@ -1172,7 +1172,7 @@ class RecipeCatalogTests(unittest.TestCase):
         drift = fleet.sync_recipe_catalog(config)
 
         self.assertIn("missing recipe grok-xhigh-cursor", drift)
-        self.assertEqual(config["recipeCatalogVersion"], 5)
+        self.assertEqual(config["recipeCatalogVersion"], 6)
         self.assertEqual(
             config["recipes"]["grok-xhigh"]["fallbacks"],
             ["grok-xhigh-cursor", "glm-53"],
@@ -1188,7 +1188,7 @@ class RecipeCatalogTests(unittest.TestCase):
     def test_catalog_contains_fable_51_max_recipe(self) -> None:
         catalog = fleet.load_recipe_catalog()
 
-        self.assertEqual(catalog["version"], 5)
+        self.assertEqual(catalog["version"], 6)
         self.assertEqual(
             catalog["usagePools"]["anthropic-fable"], {"state": "available"}
         )
@@ -1213,16 +1213,18 @@ class RecipeCatalogTests(unittest.TestCase):
         catalog = fleet.load_recipe_catalog()
 
         self.assertEqual(
-            catalog["usagePools"]["cursor-kimi"], {"state": "available"}
+            catalog["usagePools"]["kimi"], {"state": "available"}
         )
+        self.assertNotIn("cursor-kimi", catalog["usagePools"])
         self.assertEqual(
             catalog["recipes"]["kimi-k3-max"],
             {
-                "kind": "cursor",
+                "kind": "kimi",
                 "enabled": True,
-                "usagePool": "cursor-kimi",
+                "usagePool": "kimi",
                 "fallbacks": [],
-                "args": ["--model", "kimi-k3-max", "-f"],
+                "envPreStep": "export KIMI_MODEL_THINKING_EFFORT=max",
+                "args": ["--model", "kimi-code/k3", "--auto"],
             },
         )
         self.assertEqual(
