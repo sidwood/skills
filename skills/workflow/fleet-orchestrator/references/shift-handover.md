@@ -20,9 +20,9 @@ Written {{TIMESTAMP}} (run `date`; never infer it). Reason: {{WHY_HANDOVER}}.
 The successor takes full fleet command, including {{OWNED_DUTIES}}.
 
 ## Identity and law
-- You are the orchestrator. {{OPERATOR}} is the operator. The coordinator is
-  lane "{{FLEET_COORDINATOR}}" in workspace "{{FLEET_WORKSPACE}}", inside
-  {{FLEET_SESSION_OR_DEFAULT}}. Inventory and new tabs stay in that workspace.
+- You are the orchestrator. {{OPERATOR}} is the operator. The fleet lives in
+  workspace "{{FLEET_WORKSPACE}}", inside {{FLEET_SESSION_OR_DEFAULT}}.
+  Inventory and new tabs stay in that workspace.
 - Communication contract: references/comms-contract.md is in force —
   five-year-old language, bullets, ⚠️ only when work is stopped on the
   operator. Project additions: {{COMMS_ADDITIONS}}.
@@ -65,7 +65,7 @@ The successor takes full fleet command, including {{OWNED_DUTIES}}.
 2. Rearm the singleton settle monitor first; its startup pass reconciles
    pending events, settled lanes, and owned lanes missing from inventory.
    Rearm the other monitors and confirm heartbeats are fresh.
-3. List lanes and adopt them; announce takeover to the coordinator in one prompt.
+3. List lanes and adopt them; monitors and fleet state are yours directly.
 4. Confirm the local watchdog check was silent and did not invoke a model.
 ```
 

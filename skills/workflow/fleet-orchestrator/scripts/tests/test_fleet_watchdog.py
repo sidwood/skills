@@ -364,6 +364,18 @@ if 'agent' in sys.argv:
         self.polls(now=self.now + 990)
         self.assertEqual(self.ledger(), {})
 
+    def test_settle_target_gets_the_same_unacked_grace_as_legacy_rows(self):
+        for elapsed, sent in [(30, 0), (120, 120), (270, 120), (360, 360),
+                              (510, 360), (840, 840), (990, 840)]:
+            self.pending.write_text(f"impl@9\timpl\tidle\t{self.now + sent}\t1\tsettle\n")
+            self.heartbeat.write_text(str(self.now + elapsed))
+            self.polls(now=self.now + elapsed)
+        self.assertEqual(len(self.calls()), 1)
+        self.assertIn("PENDING-UNACKED impl@9", self.calls()[0][-1])
+        self.pending.write_text("")
+        self.polls(now=self.now + 990)
+        self.assertEqual(self.ledger(), {})
+
     def test_captured_lane_teardown_survives_missing_pending_row(self):
         stream = self.handoff()
         stream["events"][0].pop("closedAt")

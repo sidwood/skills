@@ -25,9 +25,7 @@ fleet_env_load() {
   : "${FLEET_POLL_SECONDS:=10}"
   : "${FLEET_ACK_TIMEOUT_SECONDS:=120}"
   : "${FLEET_TEARDOWN_GRACE_SECONDS:=30}"
-  : "${FLEET_STALL_SECONDS:=2700}"
   : "${FLEET_VERDICT_LANE_GLOBS:=*-review* *-rereview* *-parity*}"
-  : "${FLEET_SWEEP_INSTRUCTION:=Capture; apply the event table; update fleet state.}"
   : "${FLEET_CI_POLLS:=40}"
   : "${FLEET_CI_POLL_SECONDS:=90}"
   : "${FLEET_MONITOR_STALE_SECONDS:=30}"
@@ -57,12 +55,6 @@ fleet_env_load() {
       return 1
       ;;
   esac
-  case "$FLEET_STALL_SECONDS" in
-    '' | 0* | *[!0-9]*)
-      echo "fleet-env: FLEET_STALL_SECONDS must be a positive integer." >&2
-      return 1
-      ;;
-  esac
 
   if [ -n "${FLEET_SEED:-}" ]; then
     : "${FLEET_STATE_DIR:=$FLEET_SEED/temp/fleet}"
@@ -85,8 +77,8 @@ fleet_env_load() {
   export FLEET_COORDINATOR FLEET_SESSION FLEET_WORKSPACE FLEET_SEED
   export FLEET_CONFIG FLEET_STATE_DIR
   export FLEET_POLL_SECONDS FLEET_ACK_TIMEOUT_SECONDS
-  export FLEET_TEARDOWN_GRACE_SECONDS FLEET_STALL_SECONDS
-  export FLEET_SWEEP_INSTRUCTION FLEET_VERDICT_LANE_GLOBS
+  export FLEET_TEARDOWN_GRACE_SECONDS
+  export FLEET_VERDICT_LANE_GLOBS
   export FLEET_HEARTBEAT FLEET_SWEPT FLEET_PENDING FLEET_DELIVERY_FAILURES
   export FLEET_MONITOR_LOCK_FILE
   export FLEET_LOG FLEET_CAPTURES_DIR FLEET_CI_HEARTBEAT

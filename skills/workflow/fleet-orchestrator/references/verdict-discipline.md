@@ -1,9 +1,8 @@
 # Verdict discipline
 
 The orchestrator's own hands do four things: capture, rule, land, push. This
-file covers the first two. The coordinator's event table (the
-`fleet-coordinator` skill) covers dispatch and bounce mechanics; nothing here
-repeats it.
+file covers the first two. The event table in SKILL.md covers dispatch and
+bounce mechanics; nothing here repeats it.
 
 ## Capture before teardown
 
@@ -86,7 +85,8 @@ Malformed or incomplete output stays pending for correction.
 ## Reviewer routing
 
 - Reviewer lanes remain orchestrator-owned: their settles wake this role for
-  capture and ruling, while routine implementer settles go to the coordinator.
+  capture and ruling, while routine implementer settles arrive batched on the
+  settle monitor's `SETTLED` stdout for the same hands.
 - No model family reviews its own work.
 - Spend the most capable (and most rationed) reviewer where a mistake is
   expensive and hard to reverse: data migrations, security and authorization

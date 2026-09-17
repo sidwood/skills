@@ -116,7 +116,7 @@ teardown() {
   [[ "$output" == *"FLEET_CAPTURES_DIR ('$captures' is not a writable directory)"* ]]
 }
 
-@test "poll, acknowledgement, and stall intervals require canonical positive decimals" {
+@test "poll and acknowledgement intervals require canonical positive decimals" {
   for value in 0 00 08; do
     run env -u FLEET_ENV FLEET_POLL_SECONDS="$value" bash -c \
       'source "$1"; fleet_env_load' _ "$ENV_SCRIPT"
@@ -127,11 +127,6 @@ teardown() {
       'source "$1"; fleet_env_load' _ "$ENV_SCRIPT"
     [ "$status" -ne 0 ]
     [[ "$output" == *"FLEET_ACK_TIMEOUT_SECONDS must be a positive integer"* ]]
-
-    run env -u FLEET_ENV FLEET_STALL_SECONDS="$value" bash -c \
-      'source "$1"; fleet_env_load' _ "$ENV_SCRIPT"
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"FLEET_STALL_SECONDS must be a positive integer"* ]]
   done
 }
 

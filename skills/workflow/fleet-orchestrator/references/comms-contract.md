@@ -19,8 +19,8 @@ A directive in its own right, not a side effect of using bullets.
   handover — never in the chat bullets.
 - **This applies regardless of which model writes the report.** A verbose model
   drifts into precise, dense prose by default; that drift is the failure this
-  rule exists to catch. Orchestrator, coordinator, or any lane whose output the
-  operator will read: same register.
+  rule exists to catch. You and every lane whose output the operator will read
+  write to the same register.
 
 ## Form
 
@@ -56,6 +56,8 @@ Use it when:
 
 Never use it for:
 
+- A settle you are capturing, a bounce you are dispatching, or a landing you
+  have made.
 - A finding, defect, or red pipeline you are already handling.
 - Progress, however dramatic.
 - Emphasis on a point you want noticed.
@@ -94,4 +96,13 @@ about the state of the fleet.
 - <second fact, if it changes what the operator would do>.
 - Evidence: <path to capture or log>.
 - **Ask:** <decision>, recommend <option> because <one clause>. ⚠️ if stopped.
+```
+
+## Shape of an escalation
+
+```text
+- ⚠️ <ticket>: <what is stuck, in plain words>.
+- What I already tried: <one bullet>.
+- Evidence: <path to the capture>.
+- **Ask:** <decision>, recommend <option> because <one clause>.
 ```

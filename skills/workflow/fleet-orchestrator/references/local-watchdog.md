@@ -9,8 +9,8 @@ and legitimate handoffs still consume their normal model usage.
 
 1. Read `scripts/fleet-watchdog.py --help` and `codex queue --help`. Bind the
    canonical fleet config, ignored state directory, existing orchestrator
-   task UUID, monitor heartbeat, exact coordinator name, and optional board
-   and operator-pause marker. Use absolute executable paths for the scheduler.
+   task UUID, monitor heartbeat, and optional board and operator-pause
+   marker. Use absolute executable paths for the scheduler.
    This watches an existing fleet; it creates no checkout, pane, or task.
 2. Run a dry check against current state. Investigate every reported incident;
    do not suppress a real fault merely to produce a green probe. Verify the
@@ -43,11 +43,11 @@ verify the registered arguments, execution result, and subsequent run count.
 On other systems, use the equivalent native scheduler with the same one-shot
 contract. Do not use an AI automation to launch the local check.
 
-Keep the settle monitor running: it sends routine implementation results to
-the coordinator. The independent watchdog reads its heartbeat and durable
-pending events, so a dead settle monitor or unattended review can trigger a
-model turn without continuous model polling. Capture and ruling authority
-remain with their existing owners.
+Keep the settle monitor running: it delivers routine implementation results
+to the orchestrator as one batched `SETTLED` stdout line. The independent
+watchdog reads its heartbeat and durable pending events, so a dead settle
+monitor or unattended review can trigger a model turn without continuous
+model polling. Capture and ruling authority remain with the orchestrator.
 
 After local coverage passes, pause the superseded Codex heartbeat through the
 app automation tool. Preserve its identity/history as a paused record and

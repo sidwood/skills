@@ -51,6 +51,24 @@ completed.
 4. `herdr agent prompt <name> "$(cat <prompt file>)" --wait --until working
    --timeout 60000`.
 
+### Custom-lane readiness
+
+Custom integration, assembly, or landing lanes that cannot use `fleet
+ dispatch` must not hand-roll trust handling. Immediately after `herdr agent
+start`, run:
+
+```bash
+python3 scripts/herdr_agent_ready.py \
+  --agent <exact-name> --pane <exact-pane-id> --kind <recipe-kind>
+```
+
+Pass `--session <name>` when the fleet config binds one. The helper recognizes
+the known Claude, Codex, and Cursor trust screens, accepts the focused safe
+choice, and waits for either Herdr `interactive_ready` or the TUI's visible
+input prompt. `READY` means submit the real brief immediately and verify prompt
+receipt; `BLOCKED` means inspect that pane. Never leave a reserved lane idle
+after clearing trust, and never escalate a known trust screen to the operator.
+
 ## Waiting and reading
 
 - Settled means `idle`, `done`, or `blocked`; `unknown` is incomplete.
@@ -87,7 +105,7 @@ completed.
   preserves the transcript, closes and reconciles that exact lane, marks its
   configured usage pool `spent`, and immediately dispatches from the original
   requested recipe. The packaged recipe catalog therefore selects Cursor Grok
-  XHigh after native Grok XHigh without a coordinator ruling.
+  XHigh after native Grok XHigh without an orchestrator ruling.
 - A reset offer or remaining-usage notice is informational, not a spent pool.
   Authentication, configuration, startup, timeout, and ambiguous failures are
   also not capacity evidence. Preserve their transcript and raise an operator

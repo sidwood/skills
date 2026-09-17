@@ -144,7 +144,7 @@ and fallback order. This table is only its human-readable route summary.
   Kimi is `kimi-k3-max`; OpenCode Go GLM is `glm-53-opencode-go`; OpenCode Go
   Qwen is `qwen-36-plus-opencode-go`. Do not substitute a same-family model
   from another provider unless a recipe's fallback list explicitly names it.
-- A coordinator marks a pool `spent` only when the captured output
+- You mark a pool `spent` only when the captured output
   conclusively says the usage window or credits are exhausted. Reset offers,
   remaining-usage notices, authentication failures, startup failures,
   timeouts, and ambiguous errors do not prove exhaustion; retain the evidence
@@ -249,8 +249,7 @@ session, omitting its name when it is the default session. Find or create one
 workspace for the project, record its returned ID as `workspace`, then remove
 the old project-specific `session` value or replace it with the shared session
 name. Set the orchestrator's `FLEET_WORKSPACE` to the same ID and rearm the
-workspace-filtered monitor. Relaunch the coordinator under its
-workspace-unique name before dispatching new work. Do not delete the old
+workspace-filtered monitor before dispatching new work. Do not delete the old
 session as part of migration; session cleanup is a separate operator action.
 
 ## Migration from an instance-keyed recipes table

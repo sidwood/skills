@@ -38,7 +38,6 @@ setup() {
   export HERDR_LIST_MODE=ok
   export HERDR_PROMPT_RC=0
   export HERDR_PROMPT_OUTPUT=''
-  export HERDR_REQUIRE_PRESTAMP=0
   export GIT_REV_PARSE_FAIL=0
   export MV_FAIL_DEST=''
   export MV_EMPTY_AFTER_DEST=''
@@ -83,10 +82,6 @@ PYTHON
 fi
 
   if [ "${1:-}" = agent ] && [ "${2:-}" = prompt ]; then
-  if [ "${HERDR_REQUIRE_PRESTAMP:-0}" -eq 1 ]; then
-    awk -F '\t' '$4 != 0 && $5 == 1 { found = 1 } END { exit !found }' \
-      "$FLEET_PENDING" || exit 9
-  fi
   if [ "${HERDR_PROMPT_RC:-0}" -ne 0 ]; then
     printf '%s\n' "${HERDR_PROMPT_OUTPUT:-{"error":{"code":"agent_prompt_stalled"}}}" >&2
   fi
@@ -236,7 +231,6 @@ invoke_monitor() {
     -u FLEET_VERDICT_LANE_GLOBS
     "PATH=$FAKE_BIN:$PATH"
     FLEET_WORKSPACE=w1
-    FLEET_COORDINATOR=coordinator
     "FLEET_SEED=$SEED"
     "FLEET_POLL_SECONDS=${FLEET_POLL_SECONDS:-10}"
     "FLEET_ACK_TIMEOUT_SECONDS=$FLEET_ACK_TIMEOUT_SECONDS"
@@ -246,7 +240,6 @@ invoke_monitor() {
     "HERDR_LIST_MODE=$HERDR_LIST_MODE"
     "HERDR_PROMPT_RC=$HERDR_PROMPT_RC"
     "HERDR_PROMPT_OUTPUT=$HERDR_PROMPT_OUTPUT"
-    "HERDR_REQUIRE_PRESTAMP=$HERDR_REQUIRE_PRESTAMP"
     "GIT_REV_PARSE_FAIL=$GIT_REV_PARSE_FAIL"
     "REAL_GIT=$REAL_GIT"
     "MV_FAIL_DEST=$MV_FAIL_DEST"
@@ -309,10 +302,6 @@ assert_pending_not_swept() {
 prompt_count() {
   awk '$1 == "agent" && $2 == "prompt" { count++ } END { print count + 0 }' \
     "$HERDR_CALLS"
-}
-
-prompt_count_at_least() {
-  [ "$(prompt_count)" -ge "$1" ]
 }
 
 list_count() {
@@ -576,11 +565,13 @@ JSON
   wait_until 'working baseline completion' list_count_at_least 2
 
   write_settled_inventory
-  wait_until 'post-settlement delivery' prompt_count_at_least 1
+  wait_until 'post-settlement delivery' file_contains_line \
+    "$SANDBOX/legacy-swept.stdout" 'SETTLED ticket-impl@7=done'
   stop_monitor
 
-  assert_silent "$SANDBOX/legacy-swept"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/legacy-swept" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
+  run ! grep -Fq -- 'agent prompt' "$HERDR_CALLS"
   assert_pending_not_swept 'ticket-impl@7'
   grep -Fqx -- 'ticket-impl' "$SWEPT_FILE"
 }
@@ -604,8 +595,8 @@ JSON
   capture_monitor "$SANDBOX/reused-active"
 
   assert_monitor_ok "$SANDBOX/reused-active"
-  assert_silent "$SANDBOX/reused-active"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/reused-active" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'ticket-impl@7'
 }
 
@@ -682,14 +673,13 @@ JSON
   capture_monitor "$SANDBOX/delivered"
 
   assert_monitor_ok "$SANDBOX/delivered"
-  assert_silent "$SANDBOX/delivered"
-  [ "$(prompt_count)" -eq 1 ]
-  grep -Fq -- 'agent prompt coordinator' "$HERDR_CALLS"
-  grep -Fq -- 'ticket-impl@7' "$HERDR_CALLS"
+  assert_exact_wake "$SANDBOX/delivered" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
+  run ! grep -Fq -- 'agent prompt' "$HERDR_CALLS"
   assert_pending_not_swept 'ticket-impl@7'
 }
 
-@test "failed delivery wakes once and does not sweep the pending event" {
+@test "settle delivery ignores a stalled coordinator prompt transport" {
   write_settled_inventory
   write_unacknowledged_fleet
   export HERDR_PROMPT_RC=1
@@ -697,89 +687,65 @@ JSON
   capture_monitor "$SANDBOX/failed"
 
   assert_monitor_ok "$SANDBOX/failed"
-  assert_exact_wake "$SANDBOX/failed" 'WAKE delivery ticket-impl@7'
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/failed" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
+  pending_sent 'ticket-impl@7'
   assert_pending_not_swept 'ticket-impl@7'
 }
 
-@test "failed prompt payload is bounded in the log and absent from monitor output" {
-  local failure_line detail padding
+@test "delivered settle is not retried before its acknowledgement timeout" {
   write_settled_inventory
   write_unacknowledged_fleet
-  export HERDR_PROMPT_RC=1
-  printf -v padding '%0300d' 0
-  HERDR_PROMPT_OUTPUT="line one
-line	two $padding TAIL_MARKER"
-  export HERDR_PROMPT_OUTPUT
-
-  capture_monitor "$SANDBOX/failed-diagnostic"
-
-  assert_monitor_ok "$SANDBOX/failed-diagnostic"
-  assert_exact_wake "$SANDBOX/failed-diagnostic" 'WAKE delivery ticket-impl@7'
-  run ! grep -Fq 'line one' "$SANDBOX/failed-diagnostic.stdout"
-  failure_line="$(grep -F 'delivery failed: ticket-impl@7 (' "$LOG_FILE")"
-  detail="${failure_line#* (}"
-  detail="${detail%)}"
-  [[ "$detail" == line\ one\ line\ two* ]]
-  [ "${#detail}" -le 240 ]
-  [[ "$failure_line" != *TAIL_MARKER* ]]
-}
-
-@test "failed delivery is timestamped and does not retry before timeout" {
-  write_settled_inventory
-  write_unacknowledged_fleet
-  export HERDR_PROMPT_RC=1
 
   capture_monitor "$SANDBOX/delivery-first"
-  assert_exact_wake "$SANDBOX/delivery-first" 'WAKE delivery ticket-impl@7'
+  assert_monitor_ok "$SANDBOX/delivery-first"
+  assert_exact_wake "$SANDBOX/delivery-first" 'SETTLED ticket-impl@7=done'
 
   capture_monitor "$SANDBOX/delivery-repeat"
   assert_monitor_ok "$SANDBOX/delivery-repeat"
   assert_silent "$SANDBOX/delivery-repeat"
-  [ "$(prompt_count)" -eq 1 ]
+  [ "$(prompt_count)" -eq 0 ]
   awk -F '\t' \
     '$1 == "ticket-impl@7" && $4 != 0 && $5 == 1 { found = 1 }
      END { exit !found }' "$PENDING_FILE"
   assert_pending_not_swept 'ticket-impl@7'
 }
 
-@test "delivery attempt is durable before Herdr receives the prompt" {
+@test "settle delivery is durable before the orchestrator wake" {
   write_settled_inventory
   write_unacknowledged_fleet
-  export HERDR_REQUIRE_PRESTAMP=1
 
   capture_monitor "$SANDBOX/prestamped"
 
   assert_monitor_ok "$SANDBOX/prestamped"
-  assert_silent "$SANDBOX/prestamped"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/prestamped" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   pending_sent 'ticket-impl@7'
 }
 
 @test "pending event retries and sweeps only after its fleet event appears" {
   write_settled_inventory
   write_unacknowledged_fleet
-  export HERDR_PROMPT_RC=1
   capture_monitor "$SANDBOX/first-attempt"
-  assert_exact_wake "$SANDBOX/first-attempt" 'WAKE delivery ticket-impl@7'
+  assert_monitor_ok "$SANDBOX/first-attempt"
+  assert_exact_wake "$SANDBOX/first-attempt" 'SETTLED ticket-impl@7=done'
   assert_pending_not_swept 'ticket-impl@7'
 
   awk -F '\t' -v OFS='\t' '{$4 = 1; print}' "$PENDING_FILE" \
     > "$PENDING_FILE.tmp"
   mv "$PENDING_FILE.tmp" "$PENDING_FILE"
   export FLEET_ACK_TIMEOUT_SECONDS=1
-  export HERDR_PROMPT_RC=0
   capture_monitor "$SANDBOX/retry"
   assert_monitor_ok "$SANDBOX/retry"
-  assert_exact_wake "$SANDBOX/retry" 'WAKE unacked ticket-impl@7'
-  [ "$(prompt_count)" -eq 2 ]
+  assert_exact_wake "$SANDBOX/retry" $'WAKE unacked ticket-impl@7\nSETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'ticket-impl@7'
 
   write_acknowledged_fleet
   capture_monitor "$SANDBOX/acknowledged"
   assert_monitor_ok "$SANDBOX/acknowledged"
   assert_silent "$SANDBOX/acknowledged"
-  [ "$(prompt_count)" -eq 2 ]
+  [ "$(prompt_count)" -eq 0 ]
   run ! awk -F '\t' -v id='ticket-impl@7' \
     '$1 == id { found = 1 } END { exit !found }' "$PENDING_FILE"
   grep -Fqx -- 'ticket-impl@7' "$SWEPT_FILE"
@@ -791,8 +757,8 @@ line	two $padding TAIL_MARKER"
 
   capture_monitor "$SANDBOX/unacked-first"
   assert_monitor_ok "$SANDBOX/unacked-first"
-  assert_silent "$SANDBOX/unacked-first"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/unacked-first" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
 
   awk -F '\t' -v OFS='\t' '{$4 = 1; print}' "$PENDING_FILE" \
     > "$PENDING_FILE.tmp"
@@ -801,8 +767,8 @@ line	two $padding TAIL_MARKER"
 
   capture_monitor "$SANDBOX/unacked-retry"
   assert_monitor_ok "$SANDBOX/unacked-retry"
-  assert_exact_wake "$SANDBOX/unacked-retry" 'WAKE unacked ticket-impl@7'
-  [ "$(prompt_count)" -eq 2 ]
+  assert_exact_wake "$SANDBOX/unacked-retry" $'WAKE unacked ticket-impl@7\nSETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'ticket-impl@7'
 }
 
@@ -814,8 +780,8 @@ line	two $padding TAIL_MARKER"
 
   capture_monitor "$SANDBOX/backoff-first"
   assert_monitor_ok "$SANDBOX/backoff-first"
-  assert_silent "$SANDBOX/backoff-first"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/backoff-first" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
 
   now="$(date +%s)"
   awk -F '\t' -v OFS='\t' -v sent=$((now - 15)) \
@@ -824,7 +790,7 @@ line	two $padding TAIL_MARKER"
   capture_monitor "$SANDBOX/backoff-too-early"
   assert_monitor_ok "$SANDBOX/backoff-too-early"
   assert_silent "$SANDBOX/backoff-too-early"
-  [ "$(prompt_count)" -eq 1 ]
+  [ "$(prompt_count)" -eq 0 ]
 
   now="$(date +%s)"
   awk -F '\t' -v OFS='\t' -v sent=$((now - 21)) \
@@ -832,21 +798,21 @@ line	two $padding TAIL_MARKER"
   mv "$PENDING_FILE.tmp" "$PENDING_FILE"
   capture_monitor "$SANDBOX/backoff-due"
   assert_monitor_ok "$SANDBOX/backoff-due"
-  assert_exact_wake "$SANDBOX/backoff-due" 'WAKE unacked ticket-impl@7'
-  [ "$(prompt_count)" -eq 2 ]
+  assert_exact_wake "$SANDBOX/backoff-due" $'WAKE unacked ticket-impl@7\nSETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   awk -F '\t' \
     '$1 == "ticket-impl@7" && $5 == 3 { found = 1 }
      END { exit !found }' "$PENDING_FILE"
 }
 
-@test "overdue event wakes while coordinator is busy and re-prompts only when idle" {
+@test "overdue settle redelivers after the ack timeout regardless of lane state" {
   write_settled_inventory
   write_unacknowledged_fleet
 
   capture_monitor "$SANDBOX/busy-first"
   assert_monitor_ok "$SANDBOX/busy-first"
-  assert_silent "$SANDBOX/busy-first"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/busy-first" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
 
   awk -F '\t' -v OFS='\t' '{$4 = 1; print}' "$PENDING_FILE" \
     > "$PENDING_FILE.tmp"
@@ -862,26 +828,20 @@ JSON
 
   capture_monitor "$SANDBOX/busy-overdue"
   assert_monitor_ok "$SANDBOX/busy-overdue"
-  assert_exact_wake "$SANDBOX/busy-overdue" 'WAKE unacked ticket-impl@7'
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/busy-overdue" $'WAKE unacked ticket-impl@7\nSETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   awk -F '\t' \
-    '$1 == "ticket-impl@7" && $4 == 1 && $5 == 1 { found = 1 }
+    '$1 == "ticket-impl@7" && $4 != 0 && $5 == 2 { found = 1 }
      END { exit !found }' "$PENDING_FILE"
 
   capture_monitor "$SANDBOX/busy-repeat"
   assert_monitor_ok "$SANDBOX/busy-repeat"
   assert_silent "$SANDBOX/busy-repeat"
-  [ "$(prompt_count)" -eq 1 ]
-
-  write_settled_inventory
-  capture_monitor "$SANDBOX/idle-retry"
-  assert_monitor_ok "$SANDBOX/idle-retry"
-  assert_silent "$SANDBOX/idle-retry"
-  [ "$(prompt_count)" -eq 2 ]
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'ticket-impl@7'
 }
 
-@test "simultaneous routine settles use one coordinator prompt" {
+@test "simultaneous routine settles batch into one orchestrator wake line" {
   cat > "$HERDR_INVENTORY" <<'JSON'
 {"result":{"agents":[
   {"name":"coordinator","agent_status":"idle","state_change_seq":3,"terminal_title":""},
@@ -899,12 +859,27 @@ JSON
   capture_monitor "$SANDBOX/batch"
 
   assert_monitor_ok "$SANDBOX/batch"
-  assert_silent "$SANDBOX/batch"
-  [ "$(prompt_count)" -eq 1 ]
-  grep -Fq -- 'first-impl@7' "$HERDR_CALLS"
-  grep -Fq -- 'second-impl@9' "$HERDR_CALLS"
+  assert_exact_wake "$SANDBOX/batch" 'SETTLED first-impl@7=done,second-impl@9=idle'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'first-impl@7'
   assert_pending_not_swept 'second-impl@9'
+}
+
+@test "legacy coordinator-targeted pending rows convert to settle on read" {
+  local now
+  write_quiet_inventory
+  write_empty_fleet
+  now="$(date +%s)"
+  printf 'ghost@7\tghost\tdone\t%s\t1\tcoordinator\n' "$now" > "$PENDING_FILE"
+
+  capture_monitor "$SANDBOX/legacy-target"
+
+  assert_monitor_ok "$SANDBOX/legacy-target"
+  assert_silent "$SANDBOX/legacy-target"
+  [ "$(prompt_count)" -eq 0 ]
+  awk -F '\t' -v sent="$now" \
+    '$1 == "ghost@7" && $4 == sent && $5 == 1 && $6 == "settle" { found = 1 }
+     END { exit !found }' "$PENDING_FILE"
 }
 
 @test "explicit implementer role overrides review-shaped ticket and lane names" {
@@ -925,12 +900,10 @@ JSON
   capture_monitor "$SANDBOX/role-routing"
 
   assert_monitor_ok "$SANDBOX/role-routing"
-  assert_silent "$SANDBOX/role-routing"
-  [ "$(prompt_count)" -eq 1 ]
-  grep -Fq -- 'agent prompt coordinator' "$HERDR_CALLS"
-  grep -Fq -- 'review-fix-review-1@12' "$HERDR_CALLS"
+  assert_exact_wake "$SANDBOX/role-routing" 'SETTLED review-fix-review-1@12=done'
+  [ "$(prompt_count)" -eq 0 ]
   awk -F '\t' \
-    '$1 == "review-fix-review-1@12" && $6 == "coordinator" { found = 1 }
+    '$1 == "review-fix-review-1@12" && $6 == "settle" { found = 1 }
      END { exit !found }' "$PENDING_FILE"
 }
 
@@ -985,7 +958,8 @@ JSON
   export FLEET_POLL_SECONDS=1
 
   start_monitor "$SANDBOX/flap"
-  wait_until 'initial settlement delivery' prompt_count_at_least 1
+  wait_until 'initial settlement delivery' file_contains_line \
+    "$SANDBOX/flap.stdout" 'SETTLED ticket-impl@7=done'
 
   write_acknowledged_fleet
   cat > "$HERDR_INVENTORY.tmp" <<'JSON'
@@ -999,8 +973,8 @@ JSON
   wait_until 'acknowledged pending removal' pending_absent 'ticket-impl@7'
   stop_monitor
 
-  assert_silent "$SANDBOX/flap"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/flap" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   pending_absent 'ticket-impl@7'
   run ! awk -F '\t' '$1 == "ticket-impl@8" { found = 1 } END { exit !found }' \
     "$PENDING_FILE"
@@ -1044,11 +1018,12 @@ JSON
 JSON
   mv "$FLEET_FILE.tmp" "$FLEET_FILE"
 
-  wait_until 'activated lane settlement delivery' prompt_count_at_least 1
+  wait_until 'activated lane settlement delivery' file_contains_line \
+    "$SANDBOX/startup.stdout" 'SETTLED startup-impl@7=done'
   stop_monitor
 
-  assert_silent "$SANDBOX/startup"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/startup" 'SETTLED startup-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'startup-impl@7'
   pending_absent 'startup-impl@5'
 }
@@ -1094,11 +1069,11 @@ JSON
   capture_monitor "$SANDBOX/prompting-complete"
 
   assert_monitor_ok "$SANDBOX/prompting-complete"
-  assert_silent "$SANDBOX/prompting-complete"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/prompting-complete" 'SETTLED prompt-owned@11=done'
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'prompt-owned@11'
   awk -F '\t' \
-    '$1 == "prompt-owned@11" && $6 == "coordinator" { found = 1 }
+    '$1 == "prompt-owned@11" && $6 == "settle" { found = 1 }
      END { exit !found }' "$PENDING_FILE"
 }
 
@@ -1109,7 +1084,8 @@ JSON
 
   start_monitor "$SANDBOX/close-race"
 
-  wait_until 'initial settlement delivery' prompt_count_at_least 1
+  wait_until 'initial settlement delivery' file_contains_line \
+    "$SANDBOX/close-race.stdout" 'SETTLED ticket-impl@7=done'
 
   write_acknowledged_fleet
   write_quiet_inventory
@@ -1117,7 +1093,7 @@ JSON
   wait_until 'captured pending removal' pending_absent 'ticket-impl@7'
   stop_monitor
 
-  assert_silent "$SANDBOX/close-race"
+  assert_exact_wake "$SANDBOX/close-race" 'SETTLED ticket-impl@7=done'
   pending_absent 'ticket-impl@7'
   grep -Fqx -- 'ticket-impl@7' "$SWEPT_FILE"
 }
@@ -1138,8 +1114,9 @@ JSON
 JSON
   export FLEET_POLL_SECONDS=1
   start_monitor "$SANDBOX/vanished"
-  wait_until 'initial coordinator delivery' prompt_count_at_least 1
-  [ "$(prompt_count)" -eq 1 ]
+  wait_until 'initial settlement delivery' file_contains_line \
+    "$SANDBOX/vanished.stdout" 'SETTLED vanish-impl@4=done'
+  [ "$(prompt_count)" -eq 0 ]
 
   write_quiet_inventory
   wait_until 'first vanished wake' file_contains_line \
@@ -1147,7 +1124,7 @@ JSON
   wait_until 'persisted vanished event' pending_sent 'vanish-impl@4'
   stop_monitor
 
-  assert_exact_wake "$SANDBOX/vanished" 'WAKE vanished vanish-impl@4'
+  assert_exact_wake "$SANDBOX/vanished" $'SETTLED vanish-impl@4=done\nWAKE vanished vanish-impl@4'
   awk -F '\t' \
     '$1 == "vanish-impl@4" && $5 == 2 && $6 == "vanished" { found = 1 }
      END { exit !found }' "$PENDING_FILE"
@@ -1211,8 +1188,8 @@ JSON
   write_unacknowledged_fleet
   capture_monitor "$SANDBOX/config-good"
   assert_monitor_ok "$SANDBOX/config-good"
-  assert_silent "$SANDBOX/config-good"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/config-good" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
 
   awk -F '\t' -v OFS='\t' '{$4 = 1; print}' "$PENDING_FILE" \
     > "$PENDING_FILE.tmp"
@@ -1224,7 +1201,7 @@ JSON
 
   assert_monitor_ok "$SANDBOX/config-bad"
   assert_exact_wake "$SANDBOX/config-bad" 'WAKE state fleet.json'
-  [ "$(prompt_count)" -eq 1 ]
+  [ "$(prompt_count)" -eq 0 ]
   assert_pending_not_swept 'ticket-impl@7'
 }
 
@@ -1303,8 +1280,8 @@ JSON
   grep -Fxc -- "$expected" "$PENDING_FILE" | grep -qx 1
   capture_monitor "$SANDBOX/pending-write-only-recovered"
   assert_monitor_ok "$SANDBOX/pending-write-only-recovered"
-  assert_silent "$SANDBOX/pending-write-only-recovered"
-  [ "$(prompt_count)" -eq 1 ]
+  assert_exact_wake "$SANDBOX/pending-write-only-recovered" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   [ "$(awk -F '\t' '$1 == "ticket-impl@7" { count++ } END { print count + 0 }' "$PENDING_FILE")" -eq 1 ]
 }
 
@@ -1366,7 +1343,8 @@ JSON
   printf 'ghost@7\tghost\tdone\t0\t0\tcoordinator\n' > "$PENDING_FILE"
   capture_monitor "$SANDBOX/pending-number-recovered"
   assert_monitor_ok "$SANDBOX/pending-number-recovered"
-  assert_silent "$SANDBOX/pending-number-recovered"
+  assert_exact_wake "$SANDBOX/pending-number-recovered" 'SETTLED ghost@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   run ! grep -Fqx 'state:pending' "$STATE_DIR/fleet-monitor.delivery-failures"
 }
 
@@ -1808,37 +1786,6 @@ JSON
   [ ! -s "$SANDBOX/blocked.stderr" ]
 }
 
-@test "missing coordinator wake is deduplicated and rearms after recovery" {
-  write_empty_fleet
-  cat > "$HERDR_INVENTORY" <<'JSON'
-{"result":{"agents":[
-  {"name":"worker","agent_status":"working","state_change_seq":1,"terminal_title":""}
-]}}
-JSON
-
-  capture_monitor "$SANDBOX/missing-1"
-  assert_monitor_ok "$SANDBOX/missing-1"
-  assert_exact_wake "$SANDBOX/missing-1" 'WAKE coordinator missing'
-
-  capture_monitor "$SANDBOX/missing-2"
-  assert_monitor_ok "$SANDBOX/missing-2"
-  assert_silent "$SANDBOX/missing-2"
-
-  write_quiet_inventory
-  capture_monitor "$SANDBOX/recovered"
-  assert_monitor_ok "$SANDBOX/recovered"
-  assert_silent "$SANDBOX/recovered"
-
-  cat > "$HERDR_INVENTORY" <<'JSON'
-{"result":{"agents":[
-  {"name":"worker","agent_status":"working","state_change_seq":2,"terminal_title":""}
-]}}
-JSON
-  capture_monitor "$SANDBOX/missing-again"
-  assert_monitor_ok "$SANDBOX/missing-again"
-  assert_exact_wake "$SANDBOX/missing-again" 'WAKE coordinator missing'
-}
-
 @test "successful pending writes rearm their deduplicated state alarms" {
   write_settled_inventory
   write_unacknowledged_fleet
@@ -1850,7 +1797,8 @@ JSON
   capture_monitor "$SANDBOX/rearmed-state"
 
   assert_monitor_ok "$SANDBOX/rearmed-state"
-  assert_silent "$SANDBOX/rearmed-state"
+  assert_exact_wake "$SANDBOX/rearmed-state" 'SETTLED ticket-impl@7=done'
+  [ "$(prompt_count)" -eq 0 ]
   run ! grep -Fqx 'queue:ticket-impl@7' "$STATE_DIR/fleet-monitor.delivery-failures"
   run ! grep -Fqx 'state:ticket-impl@7' "$STATE_DIR/fleet-monitor.delivery-failures"
   run ! grep -Fqx 'state:pending' "$STATE_DIR/fleet-monitor.delivery-failures"

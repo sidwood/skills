@@ -88,7 +88,7 @@ invoke_self_eval() {
 
 sync_recipe_catalog() {
   python3 \
-    "$REPO_ROOT/skills/workflow/fleet-coordinator/scripts/fleet.py" \
+    "$REPO_ROOT/skills/workflow/fleet-orchestrator/scripts/fleet.py" \
     --config "$FLEET_FILE" recipes sync >/dev/null
 }
 

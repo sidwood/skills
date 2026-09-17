@@ -18,33 +18,35 @@ bytes on stdout and stderr, hence no model-visible tokens when the harness
 reads process output.
 
 **It persists every settle before notification.** Each settle enters the
-pending queue under its immutable `lane@state_change_seq` ID. Routine events
-from one poll are batched into one terse coordinator prompt; verdict events
-produce one terse orchestrator wake. Transport success proves delivery only:
-either kind remains pending until `fleet.json` records an event with the same
-`eventId` and `agent`, then records a close, lost-output resolution, or
-auditable teardown resolution. Only then does the monitor append the ID to the
-swept ledger. A capture that remains
-open past the configurable 30-second teardown grace emits a terse teardown
-wake carrying its exact event ID and stays pending until close; the
-already-captured event is not redelivered to the coordinator. Lost teardown
-wakes retry on the same acknowledgement backoff. Missing, malformed, or
+pending queue under its immutable `lane@state_change_seq` ID. Routine settles
+due together leave as one batched stdout line, `SETTLED <id=state,…>` with
+comma-joined `lane@seq=state` specs; simultaneous settles from one poll share
+that single line. Verdict, teardown, and vanished events produce one terse
+`WAKE …` wake each, on the same stdout channel the harness already reads.
+Delivery cannot fail the way a prompt to a lane could, but emission still
+proves delivery only: every event remains pending until `fleet.json` records
+an event with the same `eventId` and `agent`, then records a close,
+lost-output resolution, or auditable teardown resolution. Only then does the
+monitor append the ID to the swept ledger. A capture that remains open past
+the configurable 30-second teardown grace emits a terse teardown wake
+carrying its exact event ID and stays pending until close; the
+already-captured event is not redelivered as a settle. Lost teardown wakes
+retry on the same acknowledgement backoff. Missing, malformed, or
 future-dated capture timestamps bypass the grace.
 
-Before each notification side effect, the monitor records its epoch and
-increments its attempt count. A crash after Herdr accepts a prompt therefore
-cannot cause an immediate duplicate turn; a crash just before submission only
-delays the durable retry. `herdr agent prompt` errors can be advisory after the
-prompt was accepted, so failed and accepted-but-unacknowledged attempts stay
-pending. Retry delay grows with the attempt count:
-`FLEET_ACK_TIMEOUT_SECONDS × 1, 2, 4, 8`, capped at `8×`. An overdue
-coordinator acknowledgement emits one compact wake even while the coordinator
-is working, but the actual retry waits until that lane is not working to avoid
-queueing duplicate turns. Repeated identical failures are silent until
-recovery resets their deduplication key. This is at-least-once delivery, so
-capture by event ID must be idempotent.
+Before each notification, the monitor records its epoch and increments its
+attempt count. A crash after stdout reaches the orchestrator therefore cannot
+cause an immediate duplicate turn; a crash just before emission only delays
+the durable retry. Emission is not acknowledgement, so an
+emitted-but-unprocessed event stays pending. Retry delay grows with the
+attempt count: `FLEET_ACK_TIMEOUT_SECONDS × 1, 2, 4, 8`, capped at `8×`. An
+overdue settle acknowledgement emits one compact `WAKE unacked`, and the same
+pass re-emits the batched `SETTLED` line on that backoff. Repeated identical
+failures are silent until recovery resets their deduplication key. This is
+at-least-once delivery, so capture by event ID must be idempotent.
 
-**It wakes the orchestrator only for action:**
+**Everything due reaches the orchestrator on stdout:** routine settles in one
+batched `SETTLED` line, judgment and faults as terse wakes.
 
 | Wake | Trigger | Recovery |
 |------|---------|----------|
@@ -52,11 +54,8 @@ capture by event ID must be idempotent.
 | `WAKE blocked <lane>` | same lane blocked on two consecutive polls | read the visible pane and clear or escalate the dialog |
 | `WAKE vanished <event-id>…` | owned lane disappeared while working, done, or idle, unswept | try agent then pane capture; use auditable resolution below only if both fail |
 | `WAKE seed <old> <new>` | seed tip changed | run self-eval and re-evaluate the landing and push train |
-| `WAKE coordinator missing` | readable inventory contains worker lanes but no coordinator | inspect or restart the coordinator lane before relying on routine delivery |
-| `WAKE coordinator-stall <seconds>` | coordinator sequence froze with no spinner for the stall window | inspect its visible pane and recover or restart its loop |
 | `WAKE inventory` | workspace-filtered inventory failed or returned no lanes | restore that project's readable workspace inventory, then let startup reconciliation run |
-| `WAKE delivery <event-id>…` | coordinator prompt command failed | inspect the target and pending record; preserve it for timed retry |
-| `WAKE unacked <event-id>…` | coordinator acknowledgement is overdue | inspect the target and config; preserve it for backoff retry |
+| `WAKE unacked <event-id>…` | a settle acknowledgement is overdue | inspect the pending record and config; redelivery follows the backoff schedule |
 | `WAKE teardown <event-id>…` | a capture exceeded its teardown grace without a durable close | retry `fleet capture <lane> --event-id <id> --close`; a legacy record receives the stable `<lane>@captured` ID; record an auditable resolution for an unrecoverable orphan |
 | `WAKE state <target>` | config, heartbeat, pending queue, or ledger cannot be read or written | repair the named state, then let the next poll reconcile it |
 
@@ -73,28 +72,12 @@ Rules the design depends on:
   turns a missing owned lane into `<lane>@missing`; it also rechecks every
   settled snapshot, so a lane first seen idle while its record is still being
   advanced is not forgotten.
-- **Role comes from the config.** A recorded `review` role routes to the
-  orchestrator and `impl` routes to the coordinator. Lane-name globs are only
-  a compatibility fallback for older records with no role.
+- **Role comes from the config.** A recorded `review` role wakes the
+  orchestrator as `WAKE verdict`; `impl` settles join the batched `SETTLED`
+  line. Lane-name globs are only a compatibility fallback for older records
+  with no role.
 - **Blocked is debounced by one poll.** A single blocked reading is usually a
   lane between turns.
-- **A stall needs two dead signals, and the revision field is not one of
-  them.** A revision counter that looks like progress is a trap: some agent
-  kinds sit frozen at their first value for an entire turn while working
-  perfectly, so "revision unchanged" fires a false stall on them and hides a
-  real one on the seats whose counter climbs by itself. Use instead:
-  - the **transition sequence** (`state_change_seq`), which increments only on
-    a genuine state change, and
-  - the **spinner glyph** in the pane's terminal title (braille,
-    U+2800–U+28FF), which proves the pane is rendering at the sampled instant.
-
-  Declare a stall only when the lane reports working, the sequence has been
-  frozen for the whole stall window, **and** not one poll in that window saw a
-  spinner. Either signal alone is normal: a long turn legitimately freezes the
-  sequence, and the spinner blinks between samples. A window that ends with
-  sightings is a healthy long turn — log it and re-arm silently. Re-arm after a
-  wake too, so the next window is judged on its own evidence rather than
-  re-firing every poll.
 - **The swept ledger contains immutable event IDs.** It is append-only and is
   written only after durable acknowledgement. Dispatch also uses a fresh,
   workspace-namespaced, numbered lane name per cycle, so transcripts and
@@ -159,7 +142,8 @@ retained as inert history, but never suppress delivery: only an exact event in
   produced blind windows of 78, 50, and 23 minutes, during which settled lanes
   sat unprocessed. A persistent watcher has no restart step to forget.
 - **Every routine settle used to cost a main-loop round.** Waking a person to
-  forward a message is waste; the acting design forwards it and loses nothing.
+  forward a message is waste; one batched `SETTLED` line now carries a whole
+  poll's routine settles.
 - **Transport success used to masquerade as processing success.** The monitor
   discarded `herdr agent prompt` failures and marked lanes swept anyway. A
   crash, rejection, or swallowed prompt could therefore lose a settle

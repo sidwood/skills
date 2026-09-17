@@ -6,8 +6,8 @@ description: Use when creating, editing, repairing, or bootstrapping a canvas ka
 # Canvas Kanban
 
 Keep one machine-readable store as the truth for ticket state and render the
-board from it, so a coordinator can operate the board by pattern-matching
-fields instead of parsing prose.
+board from it, so an orchestrator can operate the board by
+pattern-matching fields instead of parsing prose.
 
 ## The file trio
 
@@ -19,7 +19,7 @@ fields instead of parsing prose.
    unless overridden here, so remove stale overrides when cards move or
    leave.
 3. The project's fleet config JSON — machine truth for phases, tips,
-   verdicts, and bounce counts (see the fleet-coordinator skill). When the
+   verdicts, and bounce counts (see the fleet-orchestrator skill). When the
    board and the config disagree, the config plus live git wins; fix the
    board.
 
@@ -39,7 +39,7 @@ fields instead of parsing prose.
    branch, commit range, implementer, reviewer, verdict notes, landed flag,
    checkout disposition.
 5. Keep policy out of card prose: standing orders hold board-wide facts and a
-   pointer to the coordinator rulebook; delete orders that died with their
+   pointer to the orchestrator rulebook; delete orders that died with their
    ticket instead of accreting them.
 6. After every edit, type-check the canvas (`tsc --noEmit` with the canvases
    tsconfig) against the installed `cursor/canvas` types before handing it

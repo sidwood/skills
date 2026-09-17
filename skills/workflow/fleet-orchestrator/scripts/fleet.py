@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fleet coordinator CLI — prompt assembly, capture, verdict, dispatch, land, gate."""
+"""Fleet CLI — prompt assembly, capture, verdict, dispatch, land, gate."""
 
 from __future__ import annotations
 
@@ -2191,7 +2191,7 @@ def herdr_agent_prompt(
         return
     _raise_on_login_demand(config, name)
     # One re-send covers the swallowed-at-startup case; anything beyond that
-    # is a seat problem the coordinator must see, not paper over.
+    # is a seat problem the operator must see, not paper over.
     run_cmd(cmd, check=False)
     if confirm_prompt_receipt(config, name, text):
         return

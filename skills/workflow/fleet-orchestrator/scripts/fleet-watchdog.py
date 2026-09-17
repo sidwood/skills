@@ -19,7 +19,7 @@ import uuid
 DONE = {"done", "complete", "landed", "cancelled", "canceled", "killed", "superseded", "withdrawn"}
 CLOSED = {"closed", "resolved"}
 STARTING = {"reserved", "tab-created", "started", "prompting", "starting"}
-FLEET = Path(__file__).resolve().parents[2] / "fleet-coordinator/scripts/fleet.py"
+FLEET = Path(__file__).resolve().parent / "fleet.py"
 
 
 def stamp(value):
@@ -309,7 +309,7 @@ def inspect_pending(path, config, now, args):
         target = columns[5] if len(columns) == 6 else ""
         if not target:
             target = "verdict" if any(r.get("name") == lane and role == "review"
-                for s in config["streams"] for role, r in s.get("agents", {}).items()) else "coordinator"
+                for s in config["streams"] for role, r in s.get("agents", {}).items()) else "settle"
         binding = events.get(event_id)
         if binding:
             stream, event = binding
@@ -323,7 +323,9 @@ def inspect_pending(path, config, now, args):
                                   f"CAPTURE-TEARDOWN {stream['ticket']} {event_id}")
             issues[key] = value
             continue
-        deferred = target == "coordinator"
+        # Legacy rows keep target "coordinator"; both spellings mean a
+        # routine settle whose acknowledgement the processing agent owes.
+        deferred = target in {"coordinator", "settle"}
         if deferred:
             target = "unacked"
         key, value = incident("pending", [event_id, target], f"PENDING-{target.upper()} {event_id}")

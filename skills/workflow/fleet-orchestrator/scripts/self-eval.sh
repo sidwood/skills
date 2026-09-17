@@ -84,7 +84,7 @@ else:
 PYTHON
 
 echo "--- recipe catalog ---"
-fleet_cli="$SCRIPT_DIR/../../fleet-coordinator/scripts/fleet.py"
+fleet_cli="$SCRIPT_DIR/fleet.py"
 if recipe_check="$(python3 "$fleet_cli" --config "$FLEET_CONFIG" recipes check 2>&1)"; then
   echo "$recipe_check"
 else
@@ -267,12 +267,12 @@ if [ -n "${FLEET_BOARD:-}" ]; then
   if [ -f "$FLEET_BOARD" ]; then
     lag=$(($(mtime "$FLEET_CONFIG") - $(mtime "$FLEET_BOARD")))
     if [ "$lag" -gt "$FLEET_BOARD_STALE_SECONDS" ]; then
-      echo "BOARD-STALE: board lags the fleet config by ${lag}s - pulse the coordinator to regenerate it"
+      echo "BOARD-STALE: board lags the fleet config by ${lag}s - rerun a 'fleet' command to regenerate it"
     else
       echo "board lag ${lag}s behind the fleet config (healthy <= $FLEET_BOARD_STALE_SECONDS)"
     fi
   else
-    echo "BOARD-STALE: board file missing at $FLEET_BOARD - pulse the coordinator"
+    echo "BOARD-STALE: board file missing at $FLEET_BOARD - rerun a 'fleet' command to regenerate it"
   fi
 fi
 
@@ -326,7 +326,7 @@ else:
     age_m = (now - int(was[0])) // 60
     if delta <= 0:
         print(f'VELOCITY-STALL: open backlog {len(open_streams)} has not decreased in '
-              f'{age_m}m (was {was[1]}) - find the bottleneck and pulse the coordinator')
+              f'{age_m}m (was {was[1]}) - find the bottleneck and dispatch behind it')
     else:
         print(f'velocity ok: open {len(open_streams)}, down {delta} in the last {age_m}m')
 
@@ -399,7 +399,7 @@ for s in streams:
     if phase_in(phase, QUEUED):
         if on_seed(tip):
             drift.append(f"QUEUE-DRIFT: {ticket} phase '{phase}' but tip {str(tip)[:8]} is "
-                         'already on the seed - have the coordinator re-phase it to landed')
+                         'already on the seed - re-phase it to landed')
         else:
             queue.append(ticket)
     elif phase_in(phase, CLOSED):

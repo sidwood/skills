@@ -19,9 +19,9 @@
    and ignored prerequisites. Run `fleet checkouts check` before dispatch.
    The dispatch command repeats checkout validation before changing fleet
    state or creating a Herdr tab, including dry runs and capacity recovery.
-4. Workers use the assigned checkout. Any additional diagnostic, recovery,
-   implementer, or reviewer checkout follows this same creation path through
-   the coordinator; workers do not create their own checkouts.
+4. Workers use the assigned checkout. You create any additional diagnostic,
+   recovery, implementer, or reviewer checkout through this same path;
+   workers do not create their own checkouts.
 
 A valid checkout is a separate Git clone in the seed's parent directory,
 with a seed-name prefix, the configured branch checked out, and a finite

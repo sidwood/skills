@@ -16,22 +16,22 @@ is a finding you will meet again, larger.
 | Section | Alarm | Action, same turn |
 |---------|-------|-------------------|
 | Herdr topology | `WORKSPACE-DRIFT` | make `fleet.json`, `FLEET_WORKSPACE`, and the optional shared `FLEET_SESSION` agree before dispatching or trusting inventory |
-| recipe catalog | `RECIPE-DRIFT` | order `fleet recipes sync`; no dispatch is allowed until `fleet recipes check` passes |
+| recipe catalog | `RECIPE-DRIFT` | run `fleet recipes sync`; no dispatch is allowed until `fleet recipes check` passes |
 | branch checkouts | `CHECKOUT-DRIFT` | stop affected dispatches; repair through BC tools, preserve active work, and obtain operator authority for any exact legacy continuation |
 | deadline | — | re-plan the remaining work if it does not fit |
-| lanes | `settled-unswept` | recover or rearm the settle monitor; `impl` routes to the coordinator and `review` routes to the orchestrator |
+| lanes | `settled-unswept` | recover or rearm the settle monitor; routine settles reach you as one batched `SETTLED` stdout line and review settles as `WAKE verdict` |
 | lanes | `blocked` | clear the waiting dialog |
 | lanes | `LANE-READ-FAILED` | the project workspace or its filtered inventory is broken; recover it before anything else |
 | git | `unpushed` > 0 | check the push cadence gates |
 | CI | a non-success conclusion | stop the train, fix forward |
 | watcher health | `MONITOR-DOWN` | relaunch the named watcher immediately |
-| optional board projection | `BOARD-STALE` | when `FLEET_BOARD` is set, pulse the coordinator to run its adapter and regenerate the projection |
+| optional board projection | `BOARD-STALE` | when `FLEET_BOARD` is set, rerun any config-mutating `fleet` command; it reruns the configured board refresh and regenerates the projection |
 | streams | phase counts | look for a phase that is not moving |
-| backlog velocity | `VELOCITY-STALL` | find the bottleneck and pulse the coordinator with it, by name |
-| blocked column | `STALE-BLOCKERS` | order the dispatch; the blocker already landed |
+| backlog velocity | `VELOCITY-STALL` | find the bottleneck and dispatch behind it, by name |
+| blocked column | `STALE-BLOCKERS` | dispatch it; the blocker already landed |
 | blocked column | top unblock levers | prioritize the blocker that frees the most work |
-| queue reconciliation | `QUEUE-DRIFT`, `ORPHANED` | have the coordinator re-phase or re-dispatch |
-| queue reconciliation | `CAPACITY-STALL` | have the coordinator retry the exact capture event; its automatic recovery must create the configured successor |
+| queue reconciliation | `QUEUE-DRIFT`, `ORPHANED` | re-phase or re-dispatch directly |
+| queue reconciliation | `CAPACITY-STALL` | retry the exact capture event; its automatic recovery must create the configured successor |
 | queue reconciliation | `CAPACITY-RECOVERY-FAILED` | read the recorded failure; repair startup state or raise the operator alert only if no configured recipe remains |
 
 An idle lane with ready work is a failure of the orchestrator, not of the

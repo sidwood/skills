@@ -50,6 +50,7 @@
     "lockf",
     "misrouting",
     "mktemp",
+    "noninteractive",
     "oneline",
     "opencode",
     "onepassword",

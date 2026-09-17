@@ -2,9 +2,9 @@
 # cspell:ignore acked endswith fromisoformat isinstance monitorable rsplit unacked
 # Persistent fleet settle monitor. It never exits on an event.
 #
-# Every settlement is queued durably before its coordinator prompt or
-# orchestrator wake. An event is swept only after fleet.json contains its exact
-# capture ID. Failed, swallowed, or missed deliveries remain pending and retry.
+# Every settlement is queued durably before its orchestrator wake. An event
+# is swept only after fleet.json contains its exact capture ID. Failed,
+# swallowed, or missed deliveries remain pending and retry.
 # Healthy polls write files only and produce no stdout or stderr.
 #
 # Launch this ONCE through a persistent monitor facility. Never with `&`: a
@@ -32,10 +32,10 @@ Usage: fleet-monitor.sh [--once] [--help]
 
 Required bindings: FLEET_WORKSPACE, FLEET_SEED.
 State and fleet config default to <seed>/temp/fleet/.
-Optional: FLEET_SESSION, FLEET_COORDINATOR, FLEET_POLL_SECONDS,
-FLEET_ACK_TIMEOUT_SECONDS, FLEET_TEARDOWN_GRACE_SECONDS,
-FLEET_VERDICT_LANE_GLOBS,
-FLEET_SWEEP_INSTRUCTION, FLEET_STALL_SECONDS, FLEET_ENV.
+Every wake, routine settles included, is delivered on stdout for the
+orchestrator; no coordinator lane exists.
+Optional: FLEET_SESSION, FLEET_POLL_SECONDS, FLEET_ACK_TIMEOUT_SECONDS,
+FLEET_TEARDOWN_GRACE_SECONDS, FLEET_VERDICT_LANE_GLOBS, FLEET_ENV.
 EOF
 }
 
@@ -93,9 +93,6 @@ fi
 
 prev=""
 prev_seed=""
-coord_seq_seen=""
-coord_seq_time=0
-coord_spinner_seen=0
 blocked_reported=" "
 fault_state_reported=0
 
@@ -1029,8 +1026,7 @@ deliver_pending() {
   shift
   [ "$#" -gt 0 ] || return 0
   local -a ids=("$@") specs=()
-  local id row lane state status csv="" joined="" old_ifs="$IFS" delivered=0
-  local delivery_output detail=""
+  local id row lane state status csv="" joined="" old_ifs="$IFS"
 
   for id in "${ids[@]}"; do
     row="$(pending_row_for_event "$id")"
@@ -1047,10 +1043,9 @@ deliver_pending() {
   joined="${specs[*]}"
   IFS="$old_ifs"
 
-  # Persist before crossing the prompt side-effect boundary. If the monitor
-  # dies after Herdr accepts the prompt, restart waits for the ACK deadline
-  # instead of immediately spending a duplicate model turn. A crash between
-  # this write and submission delays, but cannot lose, the eventual retry.
+  # Persist before emitting the wake. If the monitor dies after stdout
+  # reaches the orchestrator, restart waits for the ACK deadline instead of
+  # immediately spending a duplicate model turn.
   if ! mark_pending_sent "$csv" "$now"; then
     report_new_event_faults state state "${ids[@]}"
     return 0
@@ -1059,30 +1054,8 @@ deliver_pending() {
     clear_fault "state:$id"
   done
 
-  delivery_output="$FLEET_STATE_DIR/.fleet-delivery.$$"
-  if { fleet_herdr agent prompt "$FLEET_COORDINATOR" \
-    "SETTLED $joined. $FLEET_SWEEP_INSTRUCTION" \
-    > "$delivery_output" 2>&1; } 2>/dev/null; then
-    delivered=1
-  fi
-  if [ -s "$delivery_output" ]; then
-    detail="$(tr '\n\t' '  ' 2>/dev/null < "$delivery_output" | cut -c1-240)"
-  fi
-  unlink "$delivery_output" 2>/dev/null || true
-
-  # Herdr prompt errors can be advisory: the turn may have been accepted even
-  # when its status wait failed. Wait for either the exact capture ACK or the
-  # retry deadline instead of spending a new model turn on every ten-second
-  # poll.
-  if [ "$delivered" -eq 1 ]; then
-    for id in "${ids[@]}"; do
-      clear_fault "delivery:$id"
-    done
-    log "delivered ${#ids[@]} event(s) to coordinator: $csv"
-  else
-    report_new_event_faults delivery delivery "${ids[@]}"
-    log "delivery failed: $csv${detail:+ ($detail)}"
-  fi
+  printf 'SETTLED %s\n' "$joined"
+  log "delivered ${#ids[@]} settled event(s): $csv"
 }
 
 # Verdict and teardown events stay in the same durable queue, but their
@@ -1121,12 +1094,9 @@ reconcile_pending() {
   local cur="$1" now tmp source id lane state sent attempts target ack_status
   local config_bad=0 pending_write_failed=0
   local retry_delay
-  local coordinator_state
-  local -a due_coordinator=() due_verdict=() due_teardown=()
+  local -a due_settle=() due_verdict=() due_teardown=()
   local -a due_vanished=() late=() acked=()
   now="$(date +%s)"
-  coordinator_state="$(printf '%s\n' "$cur" | tr ';' '\n' |
-    awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $2 }')"
   tmp="$FLEET_PENDING.tmp.$$"
   source="$FLEET_PENDING.read.$$"
   if ! cp "$FLEET_PENDING" "$source" 2>/dev/null; then
@@ -1155,8 +1125,12 @@ reconcile_pending() {
       if lane_is_verdict "$lane"; then
         target=verdict
       else
-        target=coordinator
+        target=settle
       fi
+    fi
+    # Rows queued with the legacy coordinator target keep it.
+    if [ "$target" = coordinator ]; then
+      target=settle
     fi
     event_acked "$id" "$lane"
     ack_status=$?
@@ -1223,16 +1197,9 @@ reconcile_pending() {
         verdict) due_verdict+=("$id") ;;
         teardown) due_teardown+=("$id") ;;
         vanished) due_vanished+=("$id") ;;
-        *)
-          # A first delivery may be queued behind a busy coordinator. Avoid
-          # adding repeated turns while it is still working, but do not hide
-          # an overdue acknowledgement from the orchestrator.
-          if [ "$sent" -eq 0 ] || [ "$coordinator_state" != working ]; then
-            due_coordinator+=("$id")
-          fi
-          ;;
+        *) due_settle+=("$id") ;;
       esac
-      if [ "$target" = coordinator ] && [ "$sent" -ne 0 ]; then
+      if [ "$target" = settle ] && [ "$sent" -ne 0 ]; then
         late+=("$id")
       fi
     fi
@@ -1262,7 +1229,7 @@ reconcile_pending() {
   if [ -n "${late[*]-}" ]; then
     report_new_event_faults unacked unacked "${late[@]+"${late[@]}"}"
   fi
-  deliver_pending "$now" "${due_coordinator[@]+"${due_coordinator[@]}"}"
+  deliver_pending "$now" "${due_settle[@]+"${due_settle[@]}"}"
   deliver_wakes "$now" verdict "${due_verdict[@]+"${due_verdict[@]}"}"
   deliver_wakes "$now" teardown "${due_teardown[@]+"${due_teardown[@]}"}"
   deliver_wakes "$now" vanished "${due_vanished[@]+"${due_vanished[@]}"}"
@@ -1301,15 +1268,14 @@ settle() {
   if lane_is_verdict "$lane"; then
     queue_event "$id" "$lane" "$state" verdict
   else
-    queue_event "$id" "$lane" "$state" coordinator
+    queue_event "$id" "$lane" "$state" settle
   fi
 }
 
 # Lanes that settled while no monitor was armed still need handling.
 baseline() {
-  local name state seq spinner
-  while IFS='|' read -r name state seq spinner; do
-    [ "$name" = "$FLEET_COORDINATOR" ] && continue
+  local name state seq _
+  while IFS='|' read -r name state seq _; do
     case "$state" in
       done | idle)
         settle "$name" "$state" "$seq"
@@ -1319,8 +1285,7 @@ baseline() {
 }
 
 transitions() {
-  FLEET_COORDINATOR="$FLEET_COORDINATOR" python3 - "$1" "$2" 2>/dev/null <<'PYTHON'
-import os
+  python3 - "$1" "$2" 2>/dev/null <<'PYTHON'
 import sys
 
 
@@ -1334,15 +1299,10 @@ def parse(text):
 
 
 old, new = parse(sys.argv[1]), parse(sys.argv[2])
-coordinator = os.environ['FLEET_COORDINATOR']
 settled = {'done', 'idle'}
 
 for lane, (state, seq, _spinner) in new.items():
     was = old.get(lane)
-    if lane == coordinator:
-        if was and was[0] == 'blocked' and state == 'blocked':
-            print(f'BLOCKED:{lane}')
-        continue
     if state in settled and (not was or was[0] not in settled):
         print(f'SETTLED:{lane} {state} {seq}')
     # Two consecutive blocked polls, not one: a single blocked reading is
@@ -1353,53 +1313,9 @@ for lane, (state, seq, _spinner) in new.items():
         print(f'INFO:new lane {lane} ({state})')
 
 for lane, (state, seq, _spinner) in old.items():
-    if lane == coordinator:
-        continue
     if lane not in new and state in ('working', 'done', 'idle'):
         print(f'VANISHED:{lane}@{seq}')
 PYTHON
-}
-
-# A stall needs BOTH liveness signals dead across the whole window:
-# state_change_seq frozen AND no spinner sighting in any poll of that window.
-coordinator_oversight() {
-  local cur="$1" state seq spinner now frozen_for
-  # EMPTY already emits WAKE inventory; a second coordinator-missing wake
-  # would add no recovery information.
-  [ "$cur" = EMPTY ] && return 0
-  state="$(printf '%s\n' "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $2 }')"
-  seq="$(printf '%s\n' "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $3 }')"
-  spinner="$(printf '%s\n' "$cur" | tr ';' '\n' | awk -F'|' -v c="$FLEET_COORDINATOR" '$1 == c { print $4 }')"
-  now="$(date +%s)"
-  if [ -z "$state" ]; then
-    report_once coordinator:missing "WAKE coordinator missing"
-    return 0
-  fi
-  clear_fault coordinator:missing
-
-  if [ "$state" != working ]; then
-    coord_seq_seen="$seq"
-    coord_seq_time="$now"
-    coord_spinner_seen=0
-    return 0
-  fi
-  if [ "$coord_seq_seen" != "$seq" ]; then
-    coord_seq_seen="$seq"
-    coord_seq_time="$now"
-    coord_spinner_seen=0
-    return 0
-  fi
-
-  [ "$spinner" = 1 ] && coord_spinner_seen=$((coord_spinner_seen + 1))
-  frozen_for=$((now - coord_seq_time))
-  [ "$frozen_for" -ge "$FLEET_STALL_SECONDS" ] || return 0
-  if [ "$coord_spinner_seen" = 0 ]; then
-    printf 'WAKE coordinator-stall %s\n' "$frozen_for"
-  else
-    log "coordinator long turn: seq $seq frozen ${frozen_for}s; $coord_spinner_seen spinner sightings"
-  fi
-  coord_seq_time="$now"
-  coord_spinner_seen=0
 }
 
 poll() {
@@ -1455,7 +1371,6 @@ poll() {
     reconcile_missing_lanes "$cur"
     reconcile_unclosed_captures
     reconcile_pending "$cur"
-    coordinator_oversight "$cur"
     prev="$cur"
     [ -z "$seed_tip" ] || prev_seed="$seed_tip"
     return 0
@@ -1465,9 +1380,9 @@ poll() {
     printf 'WAKE seed %s %s\n' "$prev_seed" "$seed_tip"
   fi
 
-  # Process acknowledgements before disappearance detection. The coordinator
-  # is allowed to capture and close a settled lane between polls; once its
-  # event is durable, that disappearance is normal rather than VANISHED.
+  # Process acknowledgements before disappearance detection. The orchestrator
+  # may capture and close a settled lane between polls; once its event is
+  # durable, that disappearance is normal rather than VANISHED.
   reconcile_pending "$cur"
 
   while read -r line; do
@@ -1484,6 +1399,10 @@ poll() {
         ;;
       VANISHED)
         lane="${rest%@*}"
+        if swept_has_event "$rest"; then
+          log "ignored swept vanished event $rest"
+          continue
+        fi
         pending_id="$(pending_event_for_lane "$lane")"
         case "$?" in
           0) promote_vanished "$pending_id" ;;
@@ -1544,7 +1463,6 @@ poll() {
 
   # Deliver settlements first observed in this poll.
   reconcile_pending "$cur"
-  coordinator_oversight "$cur"
   prev="$cur"
   [ -z "$seed_tip" ] || prev_seed="$seed_tip"
 }
