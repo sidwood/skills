@@ -14,6 +14,11 @@ CLAUDE_SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$CLAUDE_HOME/skills}"
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_SKILLS_DIR="${GROK_SKILLS_DIR:-$GROK_HOME/skills}"
 
+# Grok Bot assistants load shared user skills from agent-data/workflows, not
+# from ~/.grok/skills (that path is for the coding Grok harness).
+GROKBOT_HOME="${GROKBOT_HOME:-$HOME/agent-data}"
+GROKBOT_SKILLS_DIR="${GROKBOT_SKILLS_DIR:-$GROKBOT_HOME/workflows}"
+
 # Codex previously used this location. It is cleanup-only now that Codex uses
 # the shared Agent Skills directory.
 LEGACY_CODEX_SKILLS_DIR="${LEGACY_CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
@@ -27,6 +32,7 @@ SKILLS_TARGET_DIRS=(
   "$AGENTS_SKILLS_DIR"
   "$CLAUDE_SKILLS_DIR"
   "$GROK_SKILLS_DIR"
+  "$GROKBOT_SKILLS_DIR"
 )
 
 # Skills that were renamed or removed; their stale links should be cleaned up.

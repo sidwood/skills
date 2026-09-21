@@ -15,4 +15,4 @@ install_skill_links
 remove_legacy_links
 configure_hermes
 
-echo "Skills installed for Codex, Claude, Grok, Kimi, Cursor, OpenCode, Pi, and Hermes."
+echo "Skills installed for Codex, Claude, Grok, Grok Bot, Kimi, Cursor, OpenCode, Pi, and Hermes."

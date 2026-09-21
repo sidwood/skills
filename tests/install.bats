@@ -10,12 +10,13 @@ teardown() {
   teardown_sandbox
 }
 
-@test "install: creates the shared, Claude, and Grok skill directories" {
+@test "install: creates the shared, Claude, Grok, and Grok Bot skill directories" {
   run_install
   [ "$status" -eq 0 ]
   [ -d "$AGENTS_SKILLS_DIR" ]
   [ -d "$CLAUDE_SKILLS_DIR" ]
   [ -d "$GROK_SKILLS_DIR" ]
+  [ -d "$GROKBOT_SKILLS_DIR" ]
 }
 
 @test "install: exposes every category as flat skill links" {
@@ -24,6 +25,7 @@ teardown() {
   assert_catalog_links "$AGENTS_SKILLS_DIR"
   assert_catalog_links "$CLAUDE_SKILLS_DIR"
   assert_catalog_links "$GROK_SKILLS_DIR"
+  assert_catalog_links "$GROKBOT_SKILLS_DIR"
   [ ! -e "$AGENTS_SKILLS_DIR/engineering" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/product" ]
 }
@@ -36,6 +38,7 @@ teardown() {
   [ ! -e "$AGENTS_SKILLS_DIR/lib" ]
   [ ! -e "$CLAUDE_SKILLS_DIR/tests" ]
   [ ! -e "$GROK_SKILLS_DIR/.githooks" ]
+  [ ! -e "$GROKBOT_SKILLS_DIR/README.md" ]
 }
 
 @test "install: leaves Claude global instructions untouched" {

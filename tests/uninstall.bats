@@ -18,6 +18,7 @@ teardown() {
   [ ! -L "$AGENTS_SKILLS_DIR/bug-report" ]
   [ ! -L "$CLAUDE_SKILLS_DIR/commit-message" ]
   [ ! -L "$GROK_SKILLS_DIR/to-prd" ]
+  [ ! -L "$GROKBOT_SKILLS_DIR/commit-message" ]
 }
 
 @test "uninstall: leaves foreign links untouched" {
@@ -38,6 +39,7 @@ teardown() {
   [ ! -d "$AGENTS_SKILLS_DIR" ]
   [ ! -d "$CLAUDE_SKILLS_DIR" ]
   [ ! -d "$GROK_SKILLS_DIR" ]
+  [ ! -d "$GROKBOT_SKILLS_DIR" ]
 }
 
 @test "uninstall: leaves non-empty skill directories" {

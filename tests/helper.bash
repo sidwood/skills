@@ -9,6 +9,8 @@ setup_sandbox() {
   export CLAUDE_SKILLS_DIR="$CLAUDE_HOME/skills"
   export GROK_HOME="$SANDBOX/grok"
   export GROK_SKILLS_DIR="$GROK_HOME/skills"
+  export GROKBOT_HOME="$SANDBOX/agent-data"
+  export GROKBOT_SKILLS_DIR="$GROKBOT_HOME/workflows"
   export LEGACY_CODEX_SKILLS_DIR="$SANDBOX/codex/skills"
   export HERMES_HOME="$SANDBOX/hermes"
   export HERMES_CONFIG_FILE="$HERMES_HOME/config.yaml"
