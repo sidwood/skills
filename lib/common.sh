@@ -384,6 +384,26 @@ remove_legacy_links() {
   remove_catalog_links_from_target "$LEGACY_CODEX_SKILLS_DIR"
 }
 
+# Succeed when the Hermes configuration already has a list item for this
+# directory, however it is quoted and with or without a trailing comment.
+hermes_lists_external_dir() {
+  local wanted="$1"
+
+  awk -v wanted="$wanted" '
+    /^[[:space:]]*-[[:space:]]/ {
+      item = $0
+      sub(/^[[:space:]]*-[[:space:]]+/, "", item)
+      sub(/[[:space:]]+#.*$/, "", item)
+      sub(/[[:space:]]+$/, "", item)
+      if (item ~ /^\047.*\047$/ || item ~ /^".*"$/) {
+        item = substr(item, 2, length(item) - 2)
+      }
+      if (item == wanted) { found = 1; exit }
+    }
+    END { exit !found }
+  ' "$HERMES_CONFIG_FILE"
+}
+
 # Hermes owns ~/.hermes/skills, so expose this repository as an external skill
 # directory instead of placing links among Hermes-managed skills.
 configure_hermes() {
@@ -404,7 +424,9 @@ configure_hermes() {
     return 0
   fi
 
-  if grep -Fq "$managed_entry" "$HERMES_CONFIG_FILE"; then
+  # Hermes rewrites its configuration and drops the quotes and marker comment,
+  # so match the path itself rather than the exact line written here.
+  if hermes_lists_external_dir "$HERMES_EXTERNAL_SKILLS_DIR"; then
     return 0
   fi
 

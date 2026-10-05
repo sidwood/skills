@@ -116,6 +116,15 @@ teardown() {
   grep -Fq "'$REPO_ROOT/skills'" "$HERMES_CONFIG_FILE"
 }
 
+@test "install: does not add a second Hermes entry after Hermes rewrites its config" {
+  mkdir -p "$HERMES_HOME"
+  printf 'skills:\n  external_dirs:\n    - %s\n' "$REPO_ROOT/skills" > "$HERMES_CONFIG_FILE"
+
+  run_install
+  [ "$status" -eq 0 ]
+  [ "$(grep -Fc "$REPO_ROOT/skills" "$HERMES_CONFIG_FILE")" -eq 1 ]
+}
+
 @test "install: does not rewrite a scalar Hermes external_dirs setting" {
   mkdir -p "$HERMES_HOME"
   printf 'skills:\n  external_dirs: /existing/skills\n' > "$HERMES_CONFIG_FILE"
