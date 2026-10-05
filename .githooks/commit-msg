@@ -15,6 +15,13 @@ function reject(message) {
   invalid = 1
 }
 
+{
+  lower_line = tolower($0)
+  if (lower_line ~ /^(co-authored-by:|signed-off-by:|generated-by:|generated with |assistant-)/) {
+    reject("line " NR " adds an attribution trailer; remove it")
+  }
+}
+
 NR == 1 {
   subject = $0
 
@@ -58,11 +65,6 @@ NR == 2 {
 }
 
 NR >= 3 {
-  lower_line = tolower($0)
-  if (lower_line ~ /^co-authored-by:/ || lower_line ~ /generated with \[/) {
-    reject("body line " NR " adds an attribution trailer; remove it")
-  }
-
   if (length($0) > 72) {
     reject("body line " NR " is " length($0) " characters; limit it to 72")
   }
