@@ -44,6 +44,7 @@ LEGACY_SKILLS=(
   caveman
   domain-model
   design-an-interface
+  zoom-out
 )
 
 # Print one frontmatter value without parsing body content.
