@@ -1,13 +1,13 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR.
+description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR.
 ---
 
 # Domain Modeling
 
 Actively build and sharpen the project's domain model while designing. Challenge
 terms, invent edge-case scenarios, and update the glossary and decisions as they
-crystallize. Merely reading `CONTEXT.md` for vocabulary does not invoke this
+crystallize. Merely reading `GLOSSARY.md` for vocabulary does not invoke this
 skill; use it when changing the model.
 
 ## File structure
@@ -16,7 +16,7 @@ Most repositories have a single context:
 
 ```text
 /
-├── CONTEXT.md
+├── GLOSSARY.md
 ├── docs/
 │   └── adrs/
 │       ├── 0001-event-sourced-orders.md
@@ -24,7 +24,7 @@ Most repositories have a single context:
 └── src/
 ```
 
-If a root `CONTEXT-MAP.md` exists, it identifies multiple contexts and points to
+If a root `GLOSSARY-MAP.md` exists, it identifies multiple contexts and points to
 their glossaries and context-specific ADRs.
 
 First locate any repository-owned domain-language and decision-record
@@ -32,7 +32,7 @@ conventions. Preserve their names, locations, formats, lifecycle, and validation
 workflow. If competing sources claim authority, surface the conflict instead of
 choosing one or creating another.
 
-Create files only when there is something to record. Create `CONTEXT.md` when
+Create files only when there is something to record. Create `GLOSSARY.md` when
 the first term is resolved. When the repository has no ADR convention, create
 `docs/adrs/` only when the first ADR is needed and use
 [ADR-FORMAT.md](ADR-FORMAT.md) as the personal default.
@@ -41,7 +41,7 @@ the first term is resolved. When the repository has no ADR convention, create
 
 ### Challenge the glossary
 
-Call out conflicts with `CONTEXT.md` immediately. When language is vague or
+Call out conflicts with `GLOSSARY.md` immediately. When language is vague or
 overloaded, recommend one precise canonical term.
 
 ### Test concrete scenarios
@@ -52,7 +52,7 @@ user describes behavior, compare it with the code and surface contradictions.
 ### Update the glossary inline
 
 Record a resolved term immediately using
-[CONTEXT-FORMAT.md](CONTEXT-FORMAT.md). `CONTEXT.md` is a domain glossary, not a
+[GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md). `GLOSSARY.md` is a domain glossary, not a
 specification, scratchpad, or record of implementation details.
 
 ### Offer ADRs sparingly
