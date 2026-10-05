@@ -385,22 +385,28 @@ remove_legacy_links() {
   remove_catalog_links_from_target "$LEGACY_CODEX_SKILLS_DIR"
 }
 
+# Awk function shared by the Hermes helpers: the value of a YAML list item,
+# without its dash, quotes, or trailing comment.
+# shellcheck disable=SC2016
+HERMES_AWK_LIST_ITEM='
+  function list_item(line) {
+    sub(/^[[:space:]]*-[[:space:]]+/, "", line)
+    sub(/[[:space:]]+#.*$/, "", line)
+    sub(/[[:space:]]+$/, "", line)
+    if (line ~ /^\047.*\047$/ || line ~ /^".*"$/) {
+      line = substr(line, 2, length(line) - 2)
+    }
+    return line
+  }
+'
+
 # Succeed when the Hermes configuration already has a list item for this
 # directory, however it is quoted and with or without a trailing comment.
 hermes_lists_external_dir() {
   local wanted="$1"
 
-  awk -v wanted="$wanted" '
-    /^[[:space:]]*-[[:space:]]/ {
-      item = $0
-      sub(/^[[:space:]]*-[[:space:]]+/, "", item)
-      sub(/[[:space:]]+#.*$/, "", item)
-      sub(/[[:space:]]+$/, "", item)
-      if (item ~ /^\047.*\047$/ || item ~ /^".*"$/) {
-        item = substr(item, 2, length(item) - 2)
-      }
-      if (item == wanted) { found = 1; exit }
-    }
+  awk -v wanted="$wanted" "$HERMES_AWK_LIST_ITEM"'
+    /^[[:space:]]*-[[:space:]]/ && list_item($0) == wanted { found = 1; exit }
     END { exit !found }
   ' "$HERMES_CONFIG_FILE"
 }
@@ -467,12 +473,24 @@ unconfigure_hermes() {
   local temp_file
 
   [ -f "$HERMES_CONFIG_FILE" ] || return 0
-  grep -Fq "$HERMES_MARKER" "$HERMES_CONFIG_FILE" || return 0
 
+  # Drop the marked line, and any skills.external_dirs item for this directory:
+  # Hermes strips the marker when it rewrites its configuration.
   temp_file="$(mktemp "${TMPDIR:-/tmp}/skills-hermes-config.XXXXXX")"
-  awk -v marker="$HERMES_MARKER" 'index($0, marker) == 0 { print }' \
-    "$HERMES_CONFIG_FILE" > "$temp_file"
-  mv "$temp_file" "$HERMES_CONFIG_FILE"
+  awk -v marker="$HERMES_MARKER" -v wanted="$HERMES_EXTERNAL_SKILLS_DIR" \
+    "$HERMES_AWK_LIST_ITEM"'
+    /^[^[:space:]#]/ { in_skills = ($0 ~ /^skills:[[:space:]]*(#.*)?$/); in_external = 0 }
+    in_skills && /^  [^[:space:]#-]/ { in_external = ($0 ~ /^  external_dirs:/) }
+    index($0, marker) { next }
+    in_external && /^[[:space:]]*-[[:space:]]/ && list_item($0) == wanted { next }
+    { print }
+  ' "$HERMES_CONFIG_FILE" > "$temp_file"
+
+  if cmp -s "$temp_file" "$HERMES_CONFIG_FILE"; then
+    rm "$temp_file"
+  else
+    mv "$temp_file" "$HERMES_CONFIG_FILE"
+  fi
 }
 
 remove_empty_skill_directories() {

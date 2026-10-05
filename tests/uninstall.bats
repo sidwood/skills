@@ -63,6 +63,25 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
+@test "uninstall: removes its Hermes entry after Hermes strips the marker" {
+  mkdir -p "$HERMES_HOME"
+  printf 'skills:\n  external_dirs:\n    - /existing/skills\n    - %s\n' \
+    "$REPO_ROOT/skills" > "$HERMES_CONFIG_FILE"
+  run_uninstall
+  [ "$status" -eq 0 ]
+  [ "$(cat "$HERMES_CONFIG_FILE")" = $'skills:\n  external_dirs:\n    - /existing/skills' ]
+}
+
+@test "uninstall: leaves the same path alone outside Hermes external_dirs" {
+  mkdir -p "$HERMES_HOME"
+  printf 'other:\n  dirs:\n    - %s\nskills:\n  watch:\n    - %s\n' \
+    "$REPO_ROOT/skills" "$REPO_ROOT/skills" > "$HERMES_CONFIG_FILE"
+  cp "$HERMES_CONFIG_FILE" "$HERMES_CONFIG_FILE.expected"
+  run_uninstall
+  [ "$status" -eq 0 ]
+  cmp -s "$HERMES_CONFIG_FILE" "$HERMES_CONFIG_FILE.expected"
+}
+
 @test "uninstall: removes renamed-skill links owned by the repository" {
   mkdir -p "$CLAUDE_SKILLS_DIR"
   ln -s "$REPO_ROOT/caveman" "$CLAUDE_SKILLS_DIR/caveman"
