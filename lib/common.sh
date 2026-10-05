@@ -45,6 +45,7 @@ LEGACY_SKILLS=(
   domain-model
   design-an-interface
   zoom-out
+  fleet-coordinator
 )
 
 # Print one frontmatter value without parsing body content.
