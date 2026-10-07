@@ -11,6 +11,10 @@ SKILLS_ROOT="${SKILLS_ROOT:-$REPO_DIR/skills}"
 AGENTS_SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$CLAUDE_HOME/skills}"
+# The claude-work alias runs Claude Code on a second account with
+# CLAUDE_CONFIG_DIR=~/.claude-work, which reads skills from there instead.
+CLAUDE_WORK_HOME="${CLAUDE_WORK_HOME:-$HOME/.claude-work}"
+CLAUDE_WORK_SKILLS_DIR="${CLAUDE_WORK_SKILLS_DIR:-$CLAUDE_WORK_HOME/skills}"
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 GROK_SKILLS_DIR="${GROK_SKILLS_DIR:-$GROK_HOME/skills}"
 
@@ -31,6 +35,7 @@ HERMES_MARKER="managed by sidwood/skills installer"
 SKILLS_TARGET_DIRS=(
   "$AGENTS_SKILLS_DIR"
   "$CLAUDE_SKILLS_DIR"
+  "$CLAUDE_WORK_SKILLS_DIR"
   "$GROK_SKILLS_DIR"
   "$GROKBOT_SKILLS_DIR"
 )

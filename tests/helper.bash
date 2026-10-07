@@ -7,6 +7,8 @@ setup_sandbox() {
   export AGENTS_SKILLS_DIR="$SANDBOX/agents/skills"
   export CLAUDE_HOME="$SANDBOX/claude"
   export CLAUDE_SKILLS_DIR="$CLAUDE_HOME/skills"
+  export CLAUDE_WORK_HOME="$SANDBOX/claude-work"
+  export CLAUDE_WORK_SKILLS_DIR="$CLAUDE_WORK_HOME/skills"
   export GROK_HOME="$SANDBOX/grok"
   export GROK_SKILLS_DIR="$GROK_HOME/skills"
   export GROKBOT_HOME="$SANDBOX/agent-data"

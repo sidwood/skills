@@ -28,14 +28,18 @@ brew install pre-commit
 
 The installer validates that every directory matches the `name` in its
 `SKILL.md`, refuses duplicate names, enables the repository commit-message
-hook, and creates repository-owned links in four global locations:
+hook, and creates repository-owned links in five global locations:
 
 | Location | Agents |
 | --- | --- |
 | `~/.agents/skills` | Codex, Cursor, Kimi Code, OpenCode, Pi |
 | `~/.claude/skills` | Claude App Code tab, Claude Code |
+| `~/.claude-work/skills` | Claude Code on the work account (`claude-work`) |
 | `~/.grok/skills` | Grok |
 | `~/agent-data/workflows` | Grok Bot |
+
+Atomic, including `atomic-work` (a separate `ATOMIC_CODING_AGENT_DIR`),
+reads `~/.agents/skills`, so it needs no directory of its own.
 
 Foreign files and links are left untouched. Re-running the installer is safe.
 The installer also migrates this repository's old links out of

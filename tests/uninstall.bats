@@ -17,6 +17,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ ! -L "$AGENTS_SKILLS_DIR/bug-report" ]
   [ ! -L "$CLAUDE_SKILLS_DIR/commit-message" ]
+  [ ! -L "$CLAUDE_WORK_SKILLS_DIR/humanizer" ]
   [ ! -L "$GROK_SKILLS_DIR/to-prd" ]
   [ ! -L "$GROKBOT_SKILLS_DIR/commit-message" ]
 }
@@ -38,6 +39,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ ! -d "$AGENTS_SKILLS_DIR" ]
   [ ! -d "$CLAUDE_SKILLS_DIR" ]
+  [ ! -d "$CLAUDE_WORK_SKILLS_DIR" ]
   [ ! -d "$GROK_SKILLS_DIR" ]
   [ ! -d "$GROKBOT_SKILLS_DIR" ]
 }
