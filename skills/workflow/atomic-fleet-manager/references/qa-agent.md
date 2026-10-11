@@ -72,7 +72,8 @@ its current turn.
   [landing-train.md](landing-train.md) describes.
 - **Issue has findings:** record the accepted findings in the tracker
   issue, then start a follow-up run in that issue's clone with the findings
-  as the objective. The fix lands in a later train.
+  as the objective. The fix lands in a later train. That train is not
+  sent back to QA (see "One QA review per piece of work").
 - **Design question:** bring it to the user with your recommendation.
 
 Read the QA agent's full output from its pane; a summary line is not the
@@ -92,11 +93,22 @@ Do these together, in one step:
 
 1. Move the issue back to In Progress in the tracker.
 2. Start the fix run in the issue's clone, with the QA finding quoted.
-3. Tell the QA agent the fix will arrive as its own train.
+3. Tell the QA agent the fix lands as its own train and will not come
+   back for review.
 
 An issue with a harness working on it is In Progress; one landed and
 awaiting or under review is In Review; one approved is Done. Check the
 board against the fleet whenever a train's verdict arrives.
+
+## One QA review per piece of work
+
+- QA reviews a piece of work once. The fix pass that answers its findings
+  lands on its harness's own approval and the gate. It is not sent back to
+  QA.
+- The reason: a review of every fix finds something new each time, about
+  one ticket per review, and the milestone never closes. What QA finds
+  outside the reviewed ticket's criteria is already a hardening ticket.
+- Ask the user before sending any fix train to QA a second time.
 
 ## Tickets QA files
 
