@@ -40,8 +40,8 @@ fail() { echo "Error: $1" >&2; exit 1; }
 [ -n "$issue" ] || fail "--issue is required."
 [ -f "$brief" ] || fail "--brief must name an existing file."
 [ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
-command -v cursor-agent >/dev/null || fail "cursor-agent is not on PATH."
-cursor-agent status 2>/dev/null | grep -q "Logged in" || fail "cursor-agent is not logged in."
+command -v agent >/dev/null || fail "The Cursor command, agent, is not on PATH."
+agent status 2>/dev/null | grep -q "Logged in" || fail "The Cursor command, agent, is not logged in."
 
 seed="$(cd "$seed" && pwd)"
 clearance="$seed/.atomic/fleet/clearance/$issue.md"

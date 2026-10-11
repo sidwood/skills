@@ -40,7 +40,7 @@ if [ -z "$issue" ] || [ -z "$clone" ] || [ -z "$brief" ]; then
 fi
 [ -d "$clone/.git" ] || { echo "Error: '$clone' is not a Git checkout." >&2; exit 1; }
 [ -f "$brief" ] || { echo "Error: brief '$brief' does not exist." >&2; exit 1; }
-command -v cursor-agent >/dev/null || { echo "Error: cursor-agent is not on PATH." >&2; exit 1; }
+command -v agent >/dev/null || { echo "Error: the Cursor command, agent, is not on PATH." >&2; exit 1; }
 
 clone="$(cd "$clone" && pwd)"
 state="$clone/.atomic/composer-grok"
@@ -77,7 +77,7 @@ finish() { # herdr-state outcome detail
 }
 
 cd "$clone" || exit 1
-chat="$(cursor-agent create-chat 2>/dev/null | tail -1)"
+chat="$(agent create-chat 2>/dev/null | tail -1)"
 [ -n "$chat" ] || { round=0; finish blocked "failed" "could not create a Cursor chat"; }
 
 writer_rules="Rules: work only inside this checkout ($clone). Read AGENTS.md first and follow it, including how to run commands and the commit-message rules (imperative subject of at most 50 characters, no attribution trailers). The work definition is the file .atomic/composer-grok/brief.md; its acceptance criteria are the contract, so do exactly what they require and nothing beyond. Run the checks AGENTS.md names for the code you touched (type check, lint, the relevant test suites) and fix what fails; this machine runs several harnesses at once, so run suites one at a time and pass --workers=${VITEST_MAX_WORKERS:-4} to Playwright. Before stating any command, path, port or name in code or documentation, confirm it exists in this repository; when you correct a mistake, search the whole repository for the same mistake and correct every instance the issue covers. Commit your work with a body that says why the change was made and names the issue; never push, never open a pull request, never change the tracker. Finish with a short summary: what you changed, which checks you ran with their results, and anything you could not do."
@@ -92,7 +92,7 @@ while [ "$round" -lt "$rounds" ]; do
   else
     prompt="A reviewer examined your work on $issue and requested changes. Its findings are in .atomic/composer-grok/round-$((round - 1))-review.md. Address every finding, or say precisely why one is wrong. $writer_rules"
   fi
-  cursor-agent -p --force --trust --model "$writer" --resume "$chat" "$prompt" \
+  agent -p --force --trust --model "$writer" --resume "$chat" "$prompt" \
     > "$state/round-$round-writer.log" 2>&1
   writer_exit=$?
   tail -15 "$state/round-$round-writer.log"
@@ -106,7 +106,7 @@ while [ "$round" -lt "$rounds" ]; do
   git -C "$clone" diff "$base..HEAD" > "$state/round-$round.diff"
   git -C "$clone" status --porcelain > "$state/round-$round-status.txt"
   review_prompt="You are reviewing an implementation of tracker issue $issue. You are read-only: do not edit files. Read .atomic/composer-grok/brief.md (the work definition; its acceptance criteria are the contract), AGENTS.md (the repository rules), the full change in .atomic/composer-grok/round-$round.diff, the uncommitted-files list in .atomic/composer-grok/round-$round-status.txt, the writer's own summary at the end of .atomic/composer-grok/round-$round-writer.log, and whatever source files you need for context. Check, in order: each acceptance criterion is met by the diff; nothing outside the issue's scope was changed; tests exist for the behavior and would fail without the change; the repository rules are followed; every command, path, port and name the change states exists in the repository; a mistake fixed in one place is not left elsewhere in the files the issue covers; each commit message has a body and names the issue; nothing is left uncommitted that should be committed. Be specific and skeptical; do not approve on the writer's word. Reply with numbered findings, each naming file and line and the observable problem, most serious first, or say there are none. The last line of your reply must be exactly 'VERDICT: APPROVED' or 'VERDICT: CHANGES_REQUESTED'."
-  cursor-agent -p --mode ask --trust --model "$reviewer" "$review_prompt" \
+  agent -p --mode ask --trust --model "$reviewer" "$review_prompt" \
     > "$state/round-$round-review.md" 2>&1
   review_exit=$?
   tail -25 "$state/round-$round-review.md"

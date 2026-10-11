@@ -1,7 +1,7 @@
 # The composer-grok harness
 
 A lighter harness beside Atomic, for simple-tier issues. It uses only the
-supported Cursor command-line agent (`cursor-agent`), so it spends Cursor
+supported Cursor command-line agent (`agent`), so it spends Cursor
 subscription compute and nothing else. Trialed on 2026-10-04 on two
 issues; the QA agent approved both and judged the pairing trustworthy for
 simple issues with checkable criteria, with train review behind it.
