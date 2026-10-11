@@ -10,6 +10,7 @@ workspace="${1:-${HERDR_WORKSPACE_ID:-}}"
 [ "${HERDR_ENV:-}" = 1 ] || { echo "Error: not running inside a Herdr pane." >&2; exit 1; }
 [ -n "$workspace" ] || { echo "Usage: status.sh [WORKSPACE_ID]" >&2; exit 2; }
 
+launch_log="${XDG_STATE_HOME:-$HOME/.local/state}/atomic-fleet/launched.tsv"
 tabs="$(herdr tab list --workspace "$workspace")"
 herdr pane list --workspace "$workspace" | TABS="$tabs" python3 -c '
 import glob, json, os, re, sys
@@ -86,6 +87,16 @@ for tab, members in pairs.items():
   if [ "$progress" = "-" ]; then
     screen="$(herdr pane read "$pane" 2>/dev/null || true)"
     progress="$(printf '%s\n' "$screen" | grep -Eo '([a-z-]+ · (single|chain|parallel)|composer-grok) · [^│]*' | tail -1 | sed 's/ *$//' || true)"
+    # A session can start a run of its own when the one it was launched with
+    # ends (a repair pass after a round limit). The pane never comes to rest,
+    # so compare the run it shows with the one recorded at launch. To accept
+    # the new run, append a line for it to the launch log.
+    shown="$(printf '%s\n' "$screen" | awk '/BACKGROUND/ { seen = 1 } seen' | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -1 || true)"
+    launched="$(awk -F'\t' -v pane="$pane" '$1 == pane { id = $3 } END { print id }' "$launch_log" 2>/dev/null || true)"
+    if [ -n "$shown" ] && [ -n "$launched" ] && [ "$shown" != "$launched" ] && [ "$label" != QA ] && [ "$status" != blocked ]; then
+      status=blocked
+      progress="unexpected run ${shown%%-*}, launched with ${launched%%-*} · ${progress:-no run shown}"
+    fi
   fi
   [ "$progress" != "~" ] || progress="agent, no run"
   printf '%s\t%s\t%s\t%s\n' "$label" "$pane" "$status" "${progress:-no run shown}"

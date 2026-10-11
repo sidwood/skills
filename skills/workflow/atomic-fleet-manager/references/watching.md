@@ -109,3 +109,14 @@ harmless for a long command: a suite or the gate in the foreground is
 killed by the next message. The launcher tells harnesses to run those in
 the background and poll, and a message from the fleet manager has the same
 effect, so send one only when it is worth interrupting a poll.
+
+## A pane that starts its own follow-up run
+
+When a run ends at its round limit, the Atomic session in the pane is told the run has completed, and it may decide to start another run in the same clone to fix what the reviewers left. The pane never comes to rest, so its agent status never changes.
+
+`launch.sh` records the run each pane was launched with in `~/.local/state/atomic-fleet/launched.tsv` (pane, issue, run id, time). `status.sh` compares that with the run the pane's BACKGROUND panel shows and reports the row `blocked` with `unexpected run <id>, launched with <id>`, which wakes the watcher.
+
+- Read the first run's `goal-ledger.json` (`status` is `handover`) and the new run's inputs in the workflow database before deciding. Check the writer, the review tier and the clone are the ones you chose, and read what the reviewers left.
+- If it is the fix pass you would have launched, let it finish, tell the pane to start no further run, and accept the run by appending a line for it to the launch log.
+- If what is left does not merit a pass (no crash, an edge no client reaches, a demand to preserve an accident), tell the pane to quit the run, land the last gated commit, and give the reviewer's open findings to QA to rule on.
+- The launch note tells the session to report and stop when its run ends. A session can still ignore it; the comparison above is the safeguard.
