@@ -162,6 +162,21 @@ After the QA agent approves a train, remove each of its harnesses with
 nothing, unless every commit in the clone is on the remote default branch.
 Do not drop the database, close the tab or remove the clone by hand first.
 
+## Chromium-only component failures mean another checkout's servers
+
+A gate that fails only in Chromium, only in component specs that touch the
+API, on a change that cannot have caused it, overlapped another checkout's
+e2e stage. A component spec with an unstubbed read reaches whatever serves
+the app's fixed ports, and Chromium resolves `localhost` to `127.0.0.1`.
+Compare the two gates' log times before reading any test.
+
+- The gate template holds the e2e lock for the component suite, so the two
+  stages never overlap across checkouts. Keep that until the project's
+  component specs can reach no real address.
+- A dev server a harness starts by hand on those ports does the same; the
+  lock does not cover it.
+- Run the train again; do not weigh the failures.
+
 ## Check the commits themselves before pushing
 
 A gate proves the code. It says nothing about the commits. Before every
@@ -191,6 +206,29 @@ gate; `EXTRA_CLONES="dir=base ..."` stacks several finished issues into
 one train. The launcher tells every harness to run the same gate on its
 clone as its final step and to report approved only on `GATE_OK`, so a
 train rarely fails the gate for something the harness could have seen.
+
+### When the train fails a test the writer's gate passed
+
+The code is the same, so the difference is timing or shared state. Find
+the cause before running the gate again:
+
+1. Run the failing file alone in the staging clone a few times. Passing
+   alone and failing in the gate points at load: the gate runs the unit
+   suites side by side, so a file takes longer than it does alone.
+2. Read what the failing assertion received. A value that the failing
+   test's own fixture cannot produce came from another test.
+3. Reproduce it on purpose, for example with a wait forced into the test,
+   so the fix can be shown to fail first.
+4. Fix the cause in the clone as its own commit and run the train again.
+   Tell the QA agent that no reviewer has seen that commit.
+
+A second gate run that happens to pass leaves the fault on the default
+branch, where it fails a later train at random.
+
+Seen 2026-10-08: a spec made a new store container per test and never
+disposed it; each kept a five-second autosave timer, and every test used
+one storage key. The file passed alone in three seconds and failed in the
+gate at 5.3.
 
 ## Two gates at a time
 
