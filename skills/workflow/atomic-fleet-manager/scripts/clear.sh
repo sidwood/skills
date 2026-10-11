@@ -29,7 +29,7 @@ Usage: clear.sh --issue ID --execution-order TEXT --in-progress N --finishing N
   --web                    This issue is mainly web work
   --web-in-progress N      In-progress issues that are mainly web work
                            (required with --web)
-  --wip-limit N            Most issues in progress at once (default 4)
+  --wip-limit N            Most issues in progress at once (default 3)
   --web-limit N            Most web issues in progress at once (default 2)
   --finishing-limit N      Refuse while this many are finishing (default 2)
   --user-exception TEXT    The user's own words allowing this issue to start
@@ -49,7 +49,7 @@ USAGE
 
 issue="" order="" area="" seed="$PWD"
 in_progress="" finishing="" clash="" web="" web_in_progress="" exception=""
-wip_limit=4 web_limit=2 finishing_limit=2
+wip_limit=3 web_limit=2 finishing_limit=2
 blockers=()
 while [ $# -gt 0 ]; do
   case "$1" in

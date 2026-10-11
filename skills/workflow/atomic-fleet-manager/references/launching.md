@@ -102,7 +102,7 @@ tracker now, not from the tab list:
 - `--area-clash`: an in-progress issue in the same code area, or `none`.
 - `--web` with `--web-in-progress`: for an issue that is mainly web work.
 
-The script refuses at 4 in progress, at 2 finishing, at 2 web issues, or
+The script refuses at 3 in progress, at 2 finishing, at 2 web issues, or
 on an area clash (`--wip-limit`, `--finishing-limit`, `--web-limit` change
 the numbers when the user sets others). `--user-exception "<their words>"`
 records the user lifting a limit for this issue; it never excuses a

@@ -119,12 +119,18 @@ repository; without one, ask before the first train.
 - **Hold the work-in-progress limit. This is law.** An issue is in
   progress from its first launch until it is Done: running, waiting to
   land, in review, or back for a fix. Unless the user set other numbers:
-  1. At most 4 issues in progress.
+  1. At most 3 issues in progress.
   2. At most 2 of them mainly web work.
   3. Start nothing while 2 or more are waiting to land or in review.
      Finish first.
   4. One issue per code area at a time.
   5. A follow-up run on a started issue needs no free slot.
+
+  Three is what the landing gate can carry: it runs one at a time at
+  about fifteen minutes, and an issue uses nearly two runs (its harness's
+  own and its share of a train), so about two issues an hour. At four,
+  finished work queued behind the gate and events were handled late. An
+  issue on a train or with the QA agent still holds its slot.
 
   Count from the tracker immediately before each first launch and pass the
   counts to `scripts/clear.sh`, which refuses a launch over the limit. Do
