@@ -114,7 +114,8 @@ scripts/launch.sh --issue M2-U1 --tracker none \
 ## Two units at once
 
 One harness at a time is the default for a milestone run as units. A second
-one needs the user's word and these checks:
+one, or a unit in the cloud lane ([cloud-lane.md](cloud-lane.md)), needs
+the user's word and these checks:
 
 - The pre-launch read of the second unit has an overlap section that names
   every file it shares with the first, the hunk in each, and one plain
