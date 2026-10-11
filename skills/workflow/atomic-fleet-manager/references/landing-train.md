@@ -162,6 +162,23 @@ After the QA agent approves a train, remove each of its harnesses with
 nothing, unless every commit in the clone is on the remote default branch.
 Do not drop the database, close the tab or remove the clone by hand first.
 
+## Check the commits themselves before pushing
+
+A gate proves the code. It says nothing about the commits. Before every
+push, over the stacked range:
+
+- No message names a tracker issue. Match the tracker's own key exactly
+  (`TUS-123`); a loose "letters, dash, digits" pattern stops a train on
+  `UTF-8` or `SHA-256`.
+- No attribution: no trailer, and no agent as author or committer.
+  `git log --format='%an|%cn' <base>..HEAD | sort -u` prints one line, the
+  owner's. A commit made on a remote machine and rebased here keeps its
+  foreign author, and the host shows it as two people.
+- Where the repo has a message hook, run it over each stacked commit: a
+  hook never sees a commit that was rebased or made where hooks were off.
+- Better still, give the repo a pre-push hook that does all three, so
+  the seed's own push is the gate.
+
 ## Pushing unattended
 
 An SSH key held by a password manager's agent stops answering when its owner is away from the keyboard, even with the screen awake, so pushes hang overnight. Land on the seed anyway (the reviewer reads the seed, and says so in its report), and keep the landed clones until origin has their commits.
