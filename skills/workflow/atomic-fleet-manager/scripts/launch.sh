@@ -22,6 +22,11 @@ Usage: launch.sh --issue ID --tier TIER --writer MODEL [options]
   --seed DIR           Seed checkout to launch from (default: current directory)
   --workspace ID       Herdr workspace (default: $HERDR_WORKSPACE_ID)
   --workflow NAME      Workflow to run (default: goal-select)
+  --agent-dir DIR      Atomic agent directory to run this harness under, for
+                       a second account's logins (~/.atomic-work/agent). The
+                       tab gets ATOMIC_CODING_AGENT_DIR and Atomic starts
+                       with ANTHROPIC_API_KEY unset, so that directory's own
+                       login is used. Default: Atomic's own directory.
   --resolve-only       Preview models and clone path; runs no Goal stage
   --max-workers N      Test workers each suite may use in this harness
                        (default: 4; sets VITEST_MAX_WORKERS in the tab and
@@ -32,7 +37,7 @@ USAGE
 
 issue="" policy="" tier="" writer="" orchestrator="" tracker="linear" checkout="" objective="" seed="$PWD"
 workspace="${HERDR_WORKSPACE_ID:-}" workflow="goal-select" resolve_only=""
-timeout=60 max_workers=4
+timeout=60 max_workers=4 agent_dir=""
 policy_dir="${ATOMIC_POLICY_DIR:-$HOME/.config/atomic/goal-select-models}"
 
 while [ $# -gt 0 ]; do
@@ -48,6 +53,7 @@ while [ $# -gt 0 ]; do
     --seed) seed="$2"; shift 2 ;;
     --workspace) workspace="$2"; shift 2 ;;
     --workflow) workflow="$2"; shift 2 ;;
+    --agent-dir) agent_dir="$2"; shift 2 ;;
     --resolve-only) resolve_only=1; shift ;;
     --max-workers) max_workers="$2"; shift 2 ;;
     --timeout) timeout="$2"; shift 2 ;;
@@ -68,6 +74,16 @@ case "$tier" in ""|simple|standard|complex) ;; *) fail "--tier must be simple, s
 [ -n "$policy" ] || [ -n "$writer" ] || fail "--writer is required with --tier."
 [ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
 command -v atomic >/dev/null || fail "atomic is not on PATH."
+# A second account lives in its own agent directory. An API key in the
+# environment would win over that directory's login, so it is unset for the
+# checks here and for the Atomic process in the tab.
+atomic_env=()
+if [ -n "$agent_dir" ]; then
+  agent_dir="${agent_dir/#\~/$HOME}"
+  [ -f "$agent_dir/auth.json" ] || fail "--agent-dir '$agent_dir' has no auth.json; log Atomic in under it first."
+  agent_dir="$(cd "$agent_dir" && pwd)"
+  atomic_env=(env -u ANTHROPIC_API_KEY "ATOMIC_CODING_AGENT_DIR=$agent_dir")
+fi
 
 case "$policy" in
   "") policy_path="$HOME/.config/atomic/goal-select.jsonc" ;;
@@ -120,9 +136,9 @@ PY
 )"
 for provider in $providers; do
   # The check exits non-zero when not ready; keep its word, not its exit.
-  state="$(atomic auth check --provider "$provider" 2>&1 | head -1 || true)"
+  state="$(${atomic_env[@]+"${atomic_env[@]}"} atomic auth check --provider "$provider" 2>&1 | head -1 || true)"
   [ -n "$state" ] || state="unknown"
-  [ "$state" = ready ] || fail "provider '$provider' is $state; log Atomic in to it before launching (atomic auth check --provider $provider)."
+  [ "$state" = ready ] || fail "provider '$provider' is $state${agent_dir:+ under $agent_dir}; log Atomic in to it before launching (atomic auth check --provider $provider)."
 done
 
 seed="$(cd "$seed" && pwd)"
@@ -172,14 +188,22 @@ if [ -z "$resolve_only" ] && { [ -z "$checkout" ] || [ "$checkout" = auto ]; }; 
   [ -n "$(find "$clearance" -mmin -30)" ] || fail "the clearance for $issue is older than 30 minutes. Read its blockers again and re-run clear.sh."
 fi
 
+tab_env=(--env "VITEST_MAX_WORKERS=$max_workers")
+[ -z "$agent_dir" ] || tab_env+=(--env "ATOMIC_CODING_AGENT_DIR=$agent_dir")
 created="$(herdr tab create --workspace "$workspace" --cwd "$seed" --label "$issue" \
-  --env "VITEST_MAX_WORKERS=$max_workers" --no-focus)"
+  "${tab_env[@]}" --no-focus)"
 tab="$(printf '%s' "$created" | json_field result.tab.tab_id)"
 pane="$(printf '%s' "$created" | json_field result.root_pane.pane_id)"
 echo "tab=$tab"
 echo "pane=$pane"
 
-herdr pane run "$pane" atomic >/dev/null
+if [ -n "$agent_dir" ]; then
+  # One word, so Herdr types it as written and reads no flag of its own in it.
+  herdr pane run "$pane" "env -u ANTHROPIC_API_KEY atomic" >/dev/null
+  echo "agent_dir=$agent_dir"
+else
+  herdr pane run "$pane" atomic >/dev/null
+fi
 
 waited=0
 until case "$(pane_state "$pane")" in "atomic idle"|"atomic done") true ;; *) false ;; esac; do

@@ -175,3 +175,14 @@ the comparison is the evidence for keeping or reverting the change.
 Say in the brief that the staging clone and the harness clones are the
 fleet manager's: QA never removes or prunes them. One QA agent removed the
 staging clone while tidying before a handover.
+
+## The QA seat under a second Claude account
+
+When the owner has a second Anthropic account with spare allowance, the QA seat can run as Claude Code under it, so reviews cost nothing from the account the fleet manager runs on.
+
+- Use the owner's own alias for that account (for example `claude-work`, which sets `CLAUDE_CONFIG_DIR` and the permission mode). Run it in the QA pane with `herdr pane run <pane> "<alias> --model <model> --effort <level> -n qa"`. `herdr agent start --kind claude` runs the plain executable and would use the first account.
+- A pane whose shell is older than the alias answers "command not found" with the whole line: source the aliases file in that pane first.
+- The first start in a folder asks whether to trust it, with "No" selected. Read the banner afterwards: it names the model, the effort and the plan.
+- Give the seat a queue file, not a single handover, when several units wait: one entry for each unit with its range, handover, report path and a status cell the seat keeps current; tell it to finish an entry before starting the next and not to stop between entries. Collect findings in one section of that file.
+- A model line does not review its own work, and QA is a review. Put every unit the seat's own model wrote on hold in the queue and ask the owner who reviews those (another model on the same account, or a seat on another provider).
+- Watch the pane for the seat stopping, not for each entry: one wake at the end.

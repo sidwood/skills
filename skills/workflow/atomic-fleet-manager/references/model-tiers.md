@@ -60,6 +60,13 @@ in their own proportion: with `composer-grok` 50, `zai/glm-5.3:max` 30 and
 `kimi-coding/k3:max` 20, that is GLM 60 and Kimi 40. `pair.sh open`
 refuses a second pair.
 
+### A second account as one more writer for small units
+
+When the owner has a second provider account under its own Atomic profile, it can carry small units too: a project policy file for that profile (simple tier, a reviewer of another model line) and `launch.sh --agent-dir <that profile> --policy <file> --tier simple --writer <model>`. Preview it once with `--resolve-only`.
+
+- It is a launch choice, not the last link of the fallback chain. A run reads one profile, and a profile holds only its own logins, so a writer that falls through its chain under the first profile cannot land on the second account by itself. Continue such a unit with `--checkout <clone>` under the other profile.
+- Order the writers by what each has left: the allowance that expires soonest first.
+
 ### A fix pass on a unit another lane wrote
 
 When QA sends findings back on a unit written and reviewed elsewhere (a cloud lane's writer and reviewer, say), the fix pass need not follow the small-unit chain: give it the strongest writer the project's compute allows and one reviewer of another model line at a lower effort. Casefile Crafter's rule (the owner, 2026-10-11): Sol 6.1 at xhigh writes, one Astra 6 reviewer at high checks, through a project policy file whose simple tier names that reviewer (`templates/policy-cloud-fix.jsonc`). Neither model has seen the work before, so the review is fresh, and the fix still lands on harness approval and the gate with no second QA review.

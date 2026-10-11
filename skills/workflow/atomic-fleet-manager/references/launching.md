@@ -38,6 +38,25 @@
 When `launch.sh` fails after creating a tab, read that pane before
 retrying, and reuse or report the tab instead of creating a second one.
 
+## A harness under a second account
+
+`launch.sh --agent-dir DIR` runs the harness under another Atomic agent
+directory, which holds its own provider logins: a second subscription
+whose allowance the user wants used. The tab gets
+`ATOMIC_CODING_AGENT_DIR`, and Atomic starts with `ANTHROPIC_API_KEY`
+unset so the directory's login is the one used.
+
+- The directory has only the logins made under it. `launch.sh` checks
+  each provider the run needs against it and refuses a launch that would
+  need one it lacks, a fallback included.
+- Prove a new directory with `--resolve-only` first: it runs no stage and
+  prints the writer, panel and fallback it resolved.
+- Sessions are under `DIR/sessions`, and runs beside `DIR` in
+  `../workflows/runs`. Give the same directory to anything of yours
+  that reads a session or a ledger.
+- That directory's settings may send helper agents to other models than
+  the default one does. Read the ledger's delegations for who wrote.
+
 ## Follow-up run after review findings
 
 Continue in the same clone so its commits are kept:
