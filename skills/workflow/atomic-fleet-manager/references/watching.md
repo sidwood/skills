@@ -58,6 +58,10 @@ after that long), `--workspace ID`.
 - **Starting is reported late on purpose.** A tab that begins working is
   reported only after it has stayed working for the interval, so a harness
   answering a ping does not wake you twice.
+- **A paused or quit run is `blocked`.** `scripts/status.sh` reads the
+  Atomic panel: a run held paused after a failed stage, or one that was
+  quit, shows as `blocked` with `run paused, resume it`. Resume it as soon
+  as the load allows; do not read a tab at rest as a finished run.
 - **One watcher at a time.** A second one doubles every notification. If
   one is already running when you want different options, let it fire or
   stop it first.
@@ -87,17 +91,45 @@ after that long), `--workspace ID`.
   reviewer's seat. Have it retry the workflow review.
 - Tell the QA agent not to add artificial CPU load when hunting flakes.
 
-## An idle harness with no run is stalled, not waiting
+## An idle harness with no run is stalled: resume it, do not relaunch it
 
-- When a harness goes to rest, read its last report at once. It is
-  finished only if that report says the reviewers approved (or names what
-  it is blocked on).
 - A harness at rest whose last line says a run "resumed" or "started", and
   whose status shows no run, is stalled. Do not assume the work continues
-  in the background. Relaunch a follow-up in its clone straight away.
-- On every status read, compare each at-rest harness against what you
-  expect: finished and landed, finished and queued for a train, or blocked
-  with a question. Anything else needs action now.
+  in the background.
+- A run that died on the machine (a workflow-database timeout, a dropped
+  connection, a provider usage limit) keeps its finished stages. A new run
+  repeats them, reviewers included. Recover in this order, moving down only
+  when a step fails:
+  1. `scripts/resume.sh --issue ID`: the same run, in its own session.
+  2. `scripts/resume.sh --issue ID --fresh`: the same run from a new Atomic
+     process, for a dead session or a stale login. Close the old tab first;
+     Atomic hands a run to another process only after its owner has been
+     silent for two minutes, and the script refuses until then.
+  3. A new run with `launch.sh --checkout`, whose objective names the
+     commits already reviewed and limits review to what changed since. Say
+     in the report why 1 and 2 failed.
+- `scripts/resume.sh --issue ID --status` prints the run's recorded state
+  (`failed`, `blocked`, `paused`, `crashed`, `running`, `completed`), its
+  latest stage and its error, from Atomic's workflow database.
+- The script refuses above its load limit: a resume into an overloaded
+  machine dies the same way.
+- Since Atomic 0.9.27 a pause is held in the owning process and the
+  stage, not in the run's recorded status, so `--status` reports a paused
+  run as `running` (owner alive) or `crashed` (owner gone). For a pause,
+  trust the pane's `/workflow status`; resume it in its own session.
+- A stage that fails on infrastructure ("Managed PostgreSQL did not answer
+  a health check in time") leaves the run held this way: the panel says
+  `1 paused` and a resume is refused as "already running in this
+  session". `resume.sh` sees the refusal, sends `/workflow quit <run>`
+  (which keeps the run resumable) and resumes again. A task view left
+  open in the pane swallows typed text; if nothing appears in the chat,
+  close the view before sending again.
+- A tab at rest is not a finished run. After a load spike, read the panel:
+  `paused` with no stage activity means the run needs a resume.
+- A provider usage limit needs the user to log in to another account before
+  any resume.
+- `blocked` on resume means the goal ledger holds a decision that closes
+  the run. Read the ledger before choosing step 3.
 
 ## "Command aborted" in a harness pane
 

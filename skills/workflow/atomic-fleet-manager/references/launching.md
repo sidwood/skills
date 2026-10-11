@@ -52,8 +52,8 @@ unset so the directory's login is the one used.
 - Prove a new directory with `--resolve-only` first: it runs no stage and
   prints the writer, panel and fallback it resolved.
 - Sessions are under `DIR/sessions`, and runs beside `DIR` in
-  `../workflows/runs`. Give the same directory to anything of yours
-  that reads a session or a ledger.
+  `../workflows/runs`. Give the same directory to `resume.sh --fresh`,
+  and to anything of yours that reads a session or a ledger.
 - That directory's settings may send helper agents to other models than
   the default one does. Read the ledger's delegations for who wrote.
 

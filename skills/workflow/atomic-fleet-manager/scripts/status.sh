@@ -87,6 +87,14 @@ for tab, members in pairs.items():
   if [ "$progress" = "-" ]; then
     screen="$(herdr pane read "$pane" 2>/dev/null || true)"
     progress="$(printf '%s\n' "$screen" | grep -Eo '([a-z-]+ · (single|chain|parallel)|composer-grok) · [^│]*' | tail -1 | sed 's/ *$//' || true)"
+    # A run that Atomic holds paused after a failed stage, or one that was
+    # quit, is stopped work in a tab that looks at rest. Report it blocked so
+    # the watcher fires and it is resumed.
+    held="$(printf '%s\n' "$screen" | grep -Eo 'BACKGROUND .*[0-9]+ (paused|quit)' | grep -Eo '(paused|quit)' | tail -1 || true)"
+    if [ -n "$held" ] && [ "$label" != QA ]; then
+      status=blocked
+      progress="run $held, resume it · ${progress:-no run shown}"
+    fi
     # A session can start a run of its own when the one it was launched with
     # ends (a repair pass after a round limit). The pane never comes to rest,
     # so compare the run it shows with the one recorded at launch. To accept
