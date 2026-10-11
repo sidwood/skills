@@ -110,6 +110,15 @@ killed by the next message. The launcher tells harnesses to run those in
 the background and poll, and a message from the fleet manager has the same
 effect, so send one only when it is worth interrupting a poll.
 
+
+## Changing a script while the fleet runs
+
+Bash reads a script as it goes, through an open file. Editing a script in
+place while a harness, the watcher or the gate is running from it makes
+that instance read the wrong bytes later. Write the new version beside it
+and rename it over the old name (`mv -f name.new name`); running
+instances keep the old file, new launches get the new one.
+
 ## A pane that starts its own follow-up run
 
 When a run ends at its round limit, the Atomic session in the pane is told the run has completed, and it may decide to start another run in the same clone to fix what the reviewers left. The pane never comes to rest, so its agent status never changes.
