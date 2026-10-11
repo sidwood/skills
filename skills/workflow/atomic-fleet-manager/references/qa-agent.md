@@ -111,3 +111,12 @@ under the first milestone:
 
 Before reporting a milestone complete, list its issues that are not Done
 and check each against the milestone's description.
+
+## Handover trains
+
+A train marked as a handover carries the harness's open findings. Ask QA to
+check the acceptance criteria as usual and then either finish the open
+items in one pass (its fix comes back as its own train) or state plainly
+which it could not finish and why. QA raises that with the fleet manager,
+who decides with the user; QA does not send the issue back to a harness
+itself.

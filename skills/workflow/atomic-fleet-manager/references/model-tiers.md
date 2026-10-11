@@ -21,6 +21,11 @@ which writers suit the issue. A launch sets three dials:
 | `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` 60, `kimi-coding/k3:max` 40 |
 | `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 30, `kimi-coding/k3:max` 20 |
 
+Every tier caps review at three rounds, with one extra round granted only
+when round three leaves a P0 or P1 open. At the cap the run ends
+`handover`, not `needs_human`: it lands like an approved run and QA
+finishes it in one pass or escalates (see [landing-train.md](landing-train.md)).
+
 The label description in the tracker is the authority (it starts
 `Writers: <model> <weight>, ...`); this table records what it said when
 the scheme was set up. Changing a tier's writers is one edit to the label;

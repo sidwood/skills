@@ -194,6 +194,23 @@ push, over the stacked range:
 - Better still, give the repo a pre-push hook that does all three, so
   the seed's own push is the gate.
 
+## A run that ends `handover`
+
+A run that uses its review rounds without quorum ends `handover`, with its
+open findings listed in the final report. It is not a failure:
+
+1. Stack and gate it like an approved run.
+2. Land it, and give QA the open-findings list with the train, marked as
+   the harness's unresolved items.
+3. QA finishes the open items in one pass when it can, and says so in its
+   verdict; its fix lands as its own train through the same gate.
+4. When QA cannot finish them, it says why; take that to the user and
+   decide together whether the issue goes back to a harness (with the
+   findings as the objective), moves tier, or is reshaped.
+
+`needs_human` is different: the orchestrator produced no work or the
+reviewers could not run. Read the pane and the ledger before anything else.
+
 ## The gate is one script, shared with the harnesses
 
 `templates/gate.sh` is the project's landing gate: install, database
