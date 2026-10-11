@@ -151,6 +151,10 @@ repository; without one, ask before the first train.
   loses checkpoints, which fails review stages across the whole fleet. If
   that happens: tell every affected tab to hold, wait for the load to fall,
   and resume a few at a time.
+- **Tracker state changes are one direct tool call.** Set an issue's
+  state with the tracker tool yourself; a helper agent spent about
+  45,000 tokens per change. Send a helper only for reads that need
+  judgement across several issues.
 - **Keep clones current.** After each landing, tell every harness that is
   still mid-run to rebase onto the seed's tip before its final review. A
   clone made before several trains landed will otherwise fail to stack and
