@@ -155,8 +155,12 @@ waited=0
 while [ -z "$run_id" ]; do
   [ "$waited" -lt "$timeout" ] || fail "no dispatch seen in pane $pane after ${timeout}s; read the pane before retrying."
   sleep 3; waited=$((waited + 3))
+  # The run id is the newest UUID in the pane that is not part of a path
+  # shown there (a scratch checkout under a session directory carries one).
   run_id="$(herdr pane read "$pane" 2>/dev/null |
-    grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -1 || true)"
+    grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' |
+    grep -v -F -x -f <(printf '%s\n%s\n' "$seed" "$checkout" | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; echo "no-uuid") |
+    tail -1 || true)"
 done
 
 echo "run_id=$run_id"
