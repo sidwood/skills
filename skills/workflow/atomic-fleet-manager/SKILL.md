@@ -37,7 +37,7 @@ outside manager.
    the user names or approves.
 6. **Launch**, one harness per issue, trial first:
    [references/launching.md](references/launching.md). Simple-tier issues
-   may use the lighter harness in
+   may use the lighter Cursor pair, which you drive one prompt at a time:
    [references/composer-grok.md](references/composer-grok.md).
 7. **Run the loop** below until the user stands the fleet down.
 
@@ -125,7 +125,9 @@ repository; without one, ask before the first train.
   3. Start nothing while 2 or more are waiting to land or in review.
      Finish first.
   4. One issue per code area at a time.
-  5. A follow-up run on a started issue needs no free slot.
+  5. At most one Cursor pair at a time: a pair needs you at every handoff.
+     While one is open, simple-tier work goes to the Atomic writers.
+  6. A follow-up run on a started issue needs no free slot.
 
   Three is what the landing gate can carry: it runs one at a time at
   about fifteen minutes, and an issue uses nearly two runs (its harness's

@@ -80,7 +80,7 @@ see [atomic-workflow-cli.md](atomic-workflow-cli.md).
 
 ## Clearance comes first
 
-`launch.sh` and `launch-composer-grok.sh` refuse a first launch unless
+`launch.sh`, `pair.sh open` and `launch-composer-grok.sh` refuse a first launch unless
 `scripts/clear.sh` wrote a clearance for the issue in the last 30 minutes:
 
 ```bash

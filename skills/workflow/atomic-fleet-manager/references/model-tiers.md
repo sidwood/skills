@@ -47,10 +47,18 @@ change.
    findings show the writer was out of its depth; then move the issue up
    one tier and say so.
 
-`composer-grok` is not an Atomic preset: it is the separate Cursor-based
-harness in [composer-grok.md](composer-grok.md), launched with
-`scripts/launch-composer-grok.sh`. Use it only for simple-tier issues whose
-criteria are checkable without interpretation.
+`composer-grok` is not an Atomic writer: it is the separate Cursor pair
+in [composer-grok.md](composer-grok.md), opened with
+`scripts/pair.sh open`. Its shape is already the simple tier
+(one writer, one reviewer, three rounds). Use it only for simple-tier
+issues whose criteria are checkable without interpretation.
+
+**One pair at a time.** The weights stand while no pair is open. As soon
+as one is, from `pair.sh open` until its issue is Done and its tab is
+closed, every other simple-tier issue goes to the label's Atomic writers
+in their own proportion: with `composer-grok` 50, `zai/glm-5.3:max` 30 and
+`kimi-coding/k3:max` 20, that is GLM 60 and Kimi 40. `pair.sh open`
+refuses a second pair.
 
 ## The one rule no weighting overrides
 
