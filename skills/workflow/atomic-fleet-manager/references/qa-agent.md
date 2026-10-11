@@ -129,6 +129,30 @@ under the first milestone:
 Before reporting a milestone complete, list its issues that are not Done
 and check each against the milestone's description.
 
+## Probes never reach a real third party
+
+A rule in the brief is not a mechanism. A QA agent told that no probe may
+reach an identity provider guarded its browser journeys with a route in
+the browser driver; two engines do not run a route for a redirect's second
+hop, and eight requests reached the real provider.
+
+When a review touches a sign-in provider, a payment provider, mail or a
+model, the brief names the mechanisms, and QA proves them before probing:
+
+- The stack under test cannot name the real service: its client is
+  replaced, or its addresses point at a stand-in on the loopback address.
+- Every browser is launched with a proxy that does not exist for any host
+  off the machine, so an escaped navigation fails instead of leaving.
+- The review stack is started with placeholder credentials for the
+  provider, never the project's real client id or key, so an escape
+  carries nothing of the project's.
+- The probe refuses to start unless all of that holds.
+- For an API suite, run it once with outbound TLS refused and assert that
+  nothing was attempted.
+- Interception in the browser is a convenience, never the guard.
+- If something does get out, QA says so at the top of its verdict with
+  exactly what was sent, and the fleet manager tells the user the same day.
+
 ## Handover trains
 
 A train marked as a handover carries the harness's open findings. Ask QA to
