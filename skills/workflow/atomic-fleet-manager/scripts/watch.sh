@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Block until a harness tab or the QA tab changes state, then print what
+# Block until any agent tab but the caller's own changes state (a harness,
+# the QA agent, a one-off agent in a tab of any name), then print what
 # changed and the full status. Run it in the background; its exit is the
 # wake-up. Re-arm it after handling each event.
 set -euo pipefail
@@ -39,7 +40,7 @@ snapshot() {
 }
 
 base="$(snapshot)"
-[ -n "$base" ] || { echo "Error: no harness or QA tabs found in workspace $workspace." >&2; exit 1; }
+[ -n "$base" ] || { echo "Error: no agent tabs found in workspace $workspace." >&2; exit 1; }
 
 waited=0
 while true; do

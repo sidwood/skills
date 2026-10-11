@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# List every Atomic and composer-grok pane in a Herdr workspace, plus the tab
-# labeled QA, with
-# its tab label, Herdr agent status and the workflow progress line from its
-# BACKGROUND panel.
+# List every agent tab in a Herdr workspace except the caller's own: an
+# Atomic pane, a composer-grok pane, the QA agent, and any other agent
+# whatever its tab is called (a one-off reviewer started by hand). Each row
+# has the tab label, a pane, the Herdr agent status and a progress line.
 set -euo pipefail
 
 workspace="${1:-${HERDR_WORKSPACE_ID:-}}"
@@ -27,9 +27,18 @@ for p in json.load(sys.stdin)["result"]["panes"]:
             status = "done" if "approved in round" in outcome else "blocked"
         elif status in ("unknown", "idle"):
             status = "working"
-    if p.get("agent") == "atomic" or harness or label == "QA":
-        print(p["pane_id"], label, status, sep="\t")
-' | while IFS=$'\t' read -r pane label status; do
-  progress="$(herdr pane read "$pane" 2>/dev/null | grep -Eo '([a-z-]+ · (single|chain|parallel)|composer-grok) · [^│]*' | tail -1 | sed 's/ *$//' || true)"
+    if p.get("agent") == "atomic" or harness:
+        print(p["pane_id"], label, status, "-", sep="\t")
+    elif (p.get("agent") or label == "QA") and p["pane_id"] != os.environ.get("HERDR_PANE_ID"):
+        # Any other agent is listed too, whatever its tab is called, so the
+        # watcher wakes when it stops. It has no Atomic run to read: only its
+        # agent status counts. The pane this script runs in is left out.
+        print(p["pane_id"], label, status, "~", sep="\t")
+' | while IFS=$'\t' read -r pane label status progress; do
+  if [ "$progress" = "-" ]; then
+    screen="$(herdr pane read "$pane" 2>/dev/null || true)"
+    progress="$(printf '%s\n' "$screen" | grep -Eo '([a-z-]+ · (single|chain|parallel)|composer-grok) · [^│]*' | tail -1 | sed 's/ *$//' || true)"
+  fi
+  [ "$progress" != "~" ] || progress="agent, no run"
   printf '%s\t%s\t%s\t%s\n' "$label" "$pane" "$status" "${progress:-no run shown}"
 done

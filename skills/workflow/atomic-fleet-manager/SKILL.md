@@ -48,7 +48,8 @@ message each other, so anything one needs to learn about another goes
 through you.
 
 1. **Keep watch.** Run `scripts/watch.sh` as a background command; it
-   exits when a harness tab or the QA tab changes state, and that exit is
+   exits when any agent tab but your own changes state (a harness, the QA
+   agent, a one-off agent in a tab of any name), and that exit is
    your wake-up. Read the pane of everything it lists as changed, act, then
    start it again. Arm it straight after each launch batch, and re-arm it
    in the same turn you handle an event, so the fleet is never unwatched.

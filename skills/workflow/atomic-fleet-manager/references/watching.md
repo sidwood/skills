@@ -13,7 +13,12 @@ scripts/watch.sh
 ```
 
 It polls `scripts/status.sh` every 60 seconds and exits when the set of
-harness tabs plus the `QA` tab differs from what it saw at start. On exit
+agent tabs differs from what it saw at start. That set is every pane in
+the workspace that holds an agent, except your own: harnesses, the QA
+agent, and any agent you start by hand in a tab of any name (a one-off
+reviewer, for example). Until 2026-10-08 only Atomic panes and the tab
+labeled `QA` were listed, so a one-off QA agent in a tab called `QA-FABLE`
+finished unnoticed. On exit
 it prints the lines that changed (`was:` and `now:`) and the full status.
 The harness that runs you delivers that exit as a notification, which
 starts your next turn.
