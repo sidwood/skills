@@ -47,6 +47,17 @@ after that long), `--workspace ID`.
 
 ## Pitfalls met in practice
 
+- **The watcher hears Herdr's agent events.** It subscribes to
+  `pane.agent_status_changed` on Herdr's socket for every pane in the
+  workspace (`scripts/herdr-wait.py`), so a tab that stops or blocks is
+  reported within seconds: a Cursor writer or reviewer ending its turn, an
+  Atomic run ending or pausing. Its output names what woke it
+  (`trigger: EVENT <pane> <state>` or `trigger: poll`). The 60-second poll
+  remains for what Herdr does not announce: a tab opening or closing, and a
+  headless harness writing its result.
+- **Starting is reported late on purpose.** A tab that begins working is
+  reported only after it has stayed working for the interval, so a harness
+  answering a ping does not wake you twice.
 - **One watcher at a time.** A second one doubles every notification. If
   one is already running when you want different options, let it fire or
   stop it first.
