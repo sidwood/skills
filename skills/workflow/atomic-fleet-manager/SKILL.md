@@ -39,6 +39,9 @@ outside manager.
    [references/launching.md](references/launching.md). Simple-tier issues
    may use the lighter Cursor pair, which you drive one prompt at a time:
    [references/composer-grok.md](references/composer-grok.md).
+   Several issues that share files, or a backlog of small defects, can
+   run as one unit in one harness:
+   [references/units.md](references/units.md).
 7. **Run the loop** below until the user stands the fleet down.
 
 ## The loop
