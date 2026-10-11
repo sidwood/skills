@@ -1,0 +1,55 @@
+// For a fix pass that answers QA on a cloud unit (H-C5-FIX and the like):
+// Sol 6.1 at xhigh writes, one Astra 6 reviewer at high checks it. Sid,
+// 2026-10-11 12:53: "run any cloud unit fixes (eg H-C5-FIX) with Sol 6.1
+// xhigh and 1 x Astra 6 high review." Launch from the default Atomic
+// directory with
+//   launch.sh --policy .atomic/fleet/policy-cloud-fix.jsonc --tier simple
+//             --writer openai/gpt-6.1-sol:xhigh
+// A cloud unit was written by Composer and reviewed by Grok in the cloud, so
+// neither Sol nor Astra has seen the work before; the one reviewer is Astra
+// because the writer is Sol, and a model line never reviews its own work.
+// goal-select: the three dials.
+//
+// A launch chooses a writer model and a review tier; the orchestrator comes
+// from defaults unless the launch sets it. The file is read again before
+// every turn, so an edit applies to running work. writer_fallbacks says
+// where a writer goes when its provider fails.
+//
+// Precedence, highest first: a top-level model key in this file or in a
+// project policy file (an override for every run that reads it), the launch
+// inputs, the chosen review tier, then defaults.
+{
+  "defaults": {
+    "orchestrator_model": "openai/gpt-6.1-sol:medium",
+    // Findings are re-verified on Astra: left unset, the re-verifier is the
+    // launching session's model, Sol, which wrote the work.
+    "reverify_model": "openai/gpt-6-astra:high",
+    "review_tier": "simple"
+  },
+  "review_tiers": {
+    // One Astra reviewer owning contract, evidence and risk together.
+    "simple": {
+      "panel": 1,
+      "reviewer_model": "openai/gpt-6-astra:high",
+      "max_turns": 3
+    },
+    // Not used for a cloud fix pass; kept so a mistaken tier still never
+    // puts Sol on the panel over a Sol writer.
+    "standard": {
+      "panel": 2,
+      "reviewer_model": "openai/gpt-6-astra:high",
+      "risk_reviewer_model": "openai/gpt-6-astra:xhigh",
+      "max_turns": 3
+    },
+    "complex": {
+      "panel": 3,
+      "reviewer_model": "openai/gpt-6-astra:high",
+      "risk_reviewer_model": "openai/gpt-6-astra:xhigh",
+      "max_turns": 3
+    }
+  },
+  // OpenAI writers have no fallback: when the OpenAI account reports its
+  // usage limit the run stops, Sid logs in to another, and the run is
+  // resumed by id.
+  "writer_fallbacks": {}
+}

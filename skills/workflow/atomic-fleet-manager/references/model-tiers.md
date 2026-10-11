@@ -60,6 +60,10 @@ in their own proportion: with `composer-grok` 50, `zai/glm-5.3:max` 30 and
 `kimi-coding/k3:max` 20, that is GLM 60 and Kimi 40. `pair.sh open`
 refuses a second pair.
 
+### A fix pass on a unit another lane wrote
+
+When QA sends findings back on a unit written and reviewed elsewhere (a cloud lane's writer and reviewer, say), the fix pass need not follow the small-unit chain: give it the strongest writer the project's compute allows and one reviewer of another model line at a lower effort. Casefile Crafter's rule (the owner, 2026-10-11): Sol 6.1 at xhigh writes, one Astra 6 reviewer at high checks, through a project policy file whose simple tier names that reviewer (`templates/policy-cloud-fix.jsonc`). Neither model has seen the work before, so the review is fresh, and the fix still lands on harness approval and the gate with no second QA review.
+
 ## The one rule no weighting overrides
 
 A model line never reviews its own work: the writer and every reviewer on
