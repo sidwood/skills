@@ -138,8 +138,14 @@ with no prompts from you. Use it only when no fleet manager session will
 be there for the handoffs.
 
 - State is in `<clone>/.atomic/composer-grok/`: `result.md` (outcome,
-  commits), `round-N-review.md`, `round-N-writer.log`,
+  commits, tokens), `round-N-review.md`, `round-N-writer.log`,
   `round-N.diff`.
 - It ends `approved in round N`, `not approved after 3 rounds` (a
   handover) or `failed` (the writer or reviewer did not run, or the
   writer made no commit; read the log it names).
+- Each turn streams its events to `round-N-writer.jsonl` or
+  `round-N-reviewer.jsonl`, and once a minute the status line shows what
+  the turn is doing: `running: <command> (Nm)`, `last: <action>`, or
+  `silent Nm, no command running`, which reports the pane blocked so the
+  watcher fires. `scripts/cursor-stream.py summary|text|usage FILE` reads
+  a stream file by hand.

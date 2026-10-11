@@ -70,10 +70,43 @@ finish() { # herdr-state outcome detail
     git -C "$clone" log --oneline "$base..HEAD" | sed 's/^/  - /'
     echo "- Tree clean: $([ -z "$(git -C "$clone" status --porcelain)" ] && echo yes || echo no)"
     echo "- Last review: $state/round-${round:-0}-review.md"
+    echo "- Tokens: $(python3 "$stream" usage "$state"/round-*.jsonl 2>/dev/null || echo "not recorded")"
   } > "$state/result.md"
   cat "$state/result.md"
   report "$1" "$2"
   exit 0
+}
+
+stream="$(cd "$(dirname "$0")" && pwd)/cursor-stream.py"
+beat="${COMPOSER_GROK_BEAT_SECONDS:-60}"
+
+# Run one Cursor agent turn with its events streamed to a file, and report a
+# heartbeat while it works: what it is doing, how long, how many files it has
+# changed. A turn with no command running and nothing from the model for ten
+# minutes is reported as blocked, so the fleet watcher sees a stalled writer.
+# Leaves every assistant message of the turn in the text file.
+run_agent() { # phase events-file text-file agent arguments...
+  local phase="$1" events="$2" text="$3" pid waited=0 summary files code
+  shift 3
+  agent "$@" > "$events" 2> "$events.err" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 5
+    waited=$((waited + 5))
+    [ "$waited" -ge "$beat" ] || continue
+    waited=0
+    summary="$(python3 "$stream" summary "$events" 2>/dev/null || echo "working")"
+    files="$(git -C "$clone" status --porcelain | wc -l | tr -d ' ')"
+    case "$summary" in
+      silent*) report blocked "round $round/$rounds · $phase · $summary · $files files changed" ;;
+      *) report working "round $round/$rounds · $phase · $summary · $files files changed" ;;
+    esac
+  done
+  wait "$pid"
+  code=$?
+  python3 "$stream" text "$events" > "$text" 2>/dev/null
+  [ "$code" -eq 0 ] || { echo; echo "agent exited $code:"; tail -20 "$events.err"; } >> "$text"
+  return "$code"
 }
 
 cd "$clone" || exit 1
@@ -99,8 +132,8 @@ while [ "$round" -lt "$rounds" ]; do
   else
     prompt="A reviewer examined your work on $issue and requested changes. Its findings are in .atomic/composer-grok/round-$((round - 1))-review.md. Address every finding, or say precisely why one is wrong. $writer_rules"
   fi
-  agent -p --force --trust --model "$writer" --resume "$chat" "$prompt" \
-    > "$state/round-$round-writer.log" 2>&1
+  run_agent writer "$state/round-$round-writer.jsonl" "$state/round-$round-writer.log" \
+    -p --force --trust --model "$writer" --resume "$chat" --output-format stream-json "$prompt"
   writer_exit=$?
   tail -15 "$state/round-$round-writer.log"
   [ "$writer_exit" -eq 0 ] || finish blocked "failed" "writer exited $writer_exit in round $round; see $state/round-$round-writer.log"
@@ -112,9 +145,9 @@ while [ "$round" -lt "$rounds" ]; do
   report working "round $round/$rounds · reviewer"
   git -C "$clone" diff "$base..HEAD" > "$state/round-$round.diff"
   git -C "$clone" status --porcelain > "$state/round-$round-status.txt"
-  review_prompt="You are reviewing an implementation of tracker issue $issue. You are read-only: do not edit files. Read .atomic/composer-grok/brief.md (the work definition; its acceptance criteria are the contract), AGENTS.md (the repository rules), the full change in .atomic/composer-grok/round-$round.diff, the uncommitted-files list in .atomic/composer-grok/round-$round-status.txt, the writer's own summary at the end of .atomic/composer-grok/round-$round-writer.log, and whatever source files you need for context. Check, in order: each acceptance criterion is met by the diff; nothing outside the issue's scope was changed; tests exist for the behavior and would fail without the change; the repository rules are followed; every command, path, port and name the change states exists in the repository; a mistake fixed in one place is not left elsewhere in the files the issue covers; each commit message has a body and names no tracker issue; nothing is left uncommitted that should be committed. Be specific and skeptical; do not approve on the writer's word. Reply with numbered findings, each naming file and line and the observable problem, most serious first, or say there are none. The last line of your reply must be exactly 'VERDICT: APPROVED' or 'VERDICT: CHANGES_REQUESTED'."
-  agent -p --mode ask --trust --model "$reviewer" "$review_prompt" \
-    > "$state/round-$round-review.md" 2>&1
+  review_prompt="You are reviewing an implementation of tracker issue $issue. You are read-only: do not edit files. Read .atomic/composer-grok/brief.md (the work definition; its acceptance criteria are the contract), AGENTS.md (the repository rules), the full change in .atomic/composer-grok/round-$round.diff, the uncommitted-files list in .atomic/composer-grok/round-$round-status.txt, the writer's own summary at the end of .atomic/composer-grok/round-$round-writer.log, and whatever source files you need for context. The writer's full event stream is .atomic/composer-grok/round-$round-writer.jsonl: it is large, so search it for the commands whose results you want to verify instead of reading it whole. Check, in order: each acceptance criterion is met by the diff; nothing outside the issue's scope was changed; tests exist for the behavior and would fail without the change; the repository rules are followed; every command, path, port and name the change states exists in the repository; a mistake fixed in one place is not left elsewhere in the files the issue covers; each commit message has a body and names no tracker issue; nothing is left uncommitted that should be committed. Be specific and skeptical; do not approve on the writer's word. Reply with numbered findings, each naming file and line and the observable problem, most serious first, or say there are none. The last line of your reply must be exactly 'VERDICT: APPROVED' or 'VERDICT: CHANGES_REQUESTED'."
+  run_agent reviewer "$state/round-$round-reviewer.jsonl" "$state/round-$round-review.md" \
+    -p --mode ask --trust --model "$reviewer" --output-format stream-json "$review_prompt"
   review_exit=$?
   tail -25 "$state/round-$round-review.md"
   [ "$review_exit" -eq 0 ] || finish blocked "failed" "reviewer exited $review_exit in round $round; see $state/round-$round-review.md"
