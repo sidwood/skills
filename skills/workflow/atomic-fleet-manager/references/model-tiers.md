@@ -56,6 +56,76 @@ and the launcher and the workflow both refuse it). When the user wants
 one model used as much as possible, launch it as writer in some harnesses
 and as reviewer in others. Do not write a new preset to get around this.
 
+## When a writer's provider runs out
+
+A provider's usage window can close in the middle of a run. Ask the user
+once for a standing fallback sequence and keep it in the project's notes.
+One user's sequence, as an example:
+
+- `xai/grok-4.7:xhigh`, then `kimi-coding/k3:max`, then `zai/glm-5.3:max`,
+  then `anthropic/claude-sonnet-5-5:max`.
+- `anthropic/claude-opus-5-5:xhigh`, then `openai/gpt-6.1-sol:xhigh`.
+- No fallback for the provider with plenty of usage.
+
+How to apply it:
+
+- Put the sequence in the shared policy as `writer_fallbacks`, keyed by
+  the writer's model line (`provider/model`, no effort), each value the
+  ordered list of models it moves to. The goal-select workflow walks it:
+  when a writer's model fails, the turn continues in a stage named
+  `orchestrator-<turn>-continued-<n>` on the next model that is not on
+  the turn's review panel and does not re-verify it. With none left the
+  run ends failed and resumable, and names what it refused and why.
+- So a step that is legal on one tier is refused on another without any
+  per-launch care: Opus falling back to Sol runs where every reviewer is
+  Astra and stops where a reviewer is Sol.
+- Do not put "continue with `<next model>`" in an objective any more, and
+  do not steer a run to another writer by message: an orchestrator told
+  to jump to a reviewer's line closes its own run for a person.
+- Why the workflow does this and not the runtime: a delegated agent tries
+  its model, then its own declared fallbacks, then the launching
+  session's model (`docs/subagents/reference.md`), and the subagent tool
+  takes no fallback list for a single call. Left alone, a failed writer
+  lands on the orchestrator's model, silently, and its task is reported
+  completed. Casefile Crafter, 2026-10-09: a Grok writer out of credits
+  and a Kimi writer past its usage window both became Sol writers on a
+  panel where Sol reviews.
+- The workflow reads which model wrote from the agents' own transcripts
+  after each orchestrator stage, and records it in the ledger
+  (`delegations`, `writer_moves`) and the receipt. "Wrote" means an
+  accepted `edit` or `write` call; a change made only through the shell
+  is not seen.
+- A writer that wrote on a line that judges the turn closes the run
+  `needs_human` before any reviewer starts, and a resume checks again.
+  Change the panel (the policy is read again) or start a new run; the
+  closure stays for the same panel even if the writing is reverted.
+- A writer whose outcome cannot be read (a torn transcript, a task still
+  running when its stage returned) also closes the run for a person.
+  Resuming it is the acknowledgment.
+- One case the gate cannot prevent: a fallback whose provider has no
+  login at all is started on the orchestrator's model. The audit catches
+  it after the stage. Check the chain's providers are logged in before a
+  launch whose writer has a chain.
+- Pin `reverify_model` in the policy's `defaults` to a line that never
+  writes. Unset, findings are re-verified on the launching session's
+  model. A project policy with a `defaults` block of its own does not
+  inherit the shared pin.
+- Reading a transcript yourself: a delegated writer's is at
+  `~/.atomic/agent/sessions/--<clone path with dashes>--/<session>/<task>/run-0/session.jsonl`,
+  and every assistant turn carries its model. An agent launched with
+  `context: "fork"` is different: its transcript is a file beside the
+  stage's own, named in its first line by `parentSession`, and it opens
+  with a copy of the parent's turns. Count only from its `session_info`
+  entry (`subagent-<agent>-<id>`). The stage's `subagent` tool results
+  say what was asked and recorded: `taskRecords[].model` and `.thinking`.
+- Do not take the writer's model from a receipt written before this
+  change: those named the model that was asked for.
+- Test a fallback model once before relying on it:
+  `atomic -ne -p "Say hello" --model <id>` from a scratch directory.
+- Run both of the workflow's test files in the preflight for any runtime
+  upgrade: two of them fail if the runtime stops passing the fallback
+  gate through to delegated agents.
+
 ## Choosing among a tier's policies
 
 A weight is the share of that tier's launches the preset should get over
@@ -89,6 +159,16 @@ Compute budgets move, so expect standing overrides: the user may say "use
 exactly the window given, then return to the label's policies without
 being asked. Do not edit a label description for a temporary override; edit
 it when the user changes the standing mix.
+
+A writer whose usage window is short (a provider that gives about an hour
+of writing in every five) is used one unit at a time: give it the first
+unit of its tier to launch, give any unit of that tier running beside it
+the tier's next writer, and never run two writers on it at once, or both
+drain the window and fall back together. Size its unit to the window. Note
+when its writer started, and launch its next unit once the last is done
+and the window has reset; a launch into a spent window only falls back.
+When the user wants an allowance used up before it expires, this is the
+way to keep every window busy without overloading one.
 
 ## Rubric
 

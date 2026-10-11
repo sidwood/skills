@@ -94,6 +94,37 @@ PY
 )"
 [ -z "$same_line" ] || fail "policy '$policy_path' has '$same_line' as both writer and reviewer; a model line must not review itself."
 
+# Every provider a stage will use must be ready now: a stage on an unready
+# provider fails instead of running. That includes the writer's fallbacks
+# (the policy's writer_fallbacks for its model line): a fallback whose
+# provider has no login is started on the orchestrator's model, which the
+# workflow can only catch afterwards.
+providers="$(python3 - "$policy_path" "$tier" "$writer" "$orchestrator" "$HOME/.config/atomic/goal-select.jsonc" <<'PY'
+import json, re, sys
+def load(path):
+    try:
+        return json.loads(re.sub(r"(?m)^\s*//.*$", "", open(path).read()))
+    except (OSError, ValueError):
+        return {}
+policy = load(sys.argv[1])
+tier = policy.get("review_tiers", {}).get(sys.argv[2], {}) if sys.argv[2] else {}
+models = [sys.argv[3], sys.argv[4], policy.get("defaults", {}).get("orchestrator_model"), policy.get("defaults", {}).get("reverify_model")]
+models += [v for k, v in list(policy.items()) + list(tier.items()) if k.endswith("_model") and isinstance(v, str)]
+# A policy file without the key inherits the shared file's chains.
+chains = policy["writer_fallbacks"] if "writer_fallbacks" in policy else load(sys.argv[5]).get("writer_fallbacks", {})
+line = re.sub(r":[a-z]+$", "", sys.argv[3] or "")
+if isinstance(chains, dict) and isinstance(chains.get(line), list):
+    models += [m for m in chains[line] if isinstance(m, str)]
+print(" ".join(sorted({m.split("/")[0] for m in models if m and "/" in m})))
+PY
+)"
+for provider in $providers; do
+  # The check exits non-zero when not ready; keep its word, not its exit.
+  state="$(atomic auth check --provider "$provider" 2>&1 | head -1 || true)"
+  [ -n "$state" ] || state="unknown"
+  [ "$state" = ready ] || fail "provider '$provider' is $state; log Atomic in to it before launching (atomic auth check --provider $provider)."
+done
+
 seed="$(cd "$seed" && pwd)"
 git -C "$seed" rev-parse --git-dir >/dev/null 2>&1 || fail "'$seed' is not a Git checkout."
 if [ -z "$checkout" ] && [ -n "$(git -C "$seed" status --porcelain)" ]; then
