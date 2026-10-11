@@ -51,7 +51,7 @@ after that long), `--workspace ID`.
   read and keeps waiting.
 - **The watcher does not see trains.** Checks you start in the staging
   clone are their own background commands with their own notifications.
-- **Long waits are normal.** A frontier harness can run for over an hour;
+- **Long waits are normal.** A complex harness can run for over an hour;
   silence from the watcher means nothing changed, not that it died. To
   check on it without waiting, run `scripts/status.sh`.
 - **Do not poll in the foreground.** Sleeping in the main turn blocks the

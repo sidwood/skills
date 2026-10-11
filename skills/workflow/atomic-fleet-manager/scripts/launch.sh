@@ -5,10 +5,16 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: launch.sh --issue ID --policy NAME_OR_PATH [options]
+Usage: launch.sh --issue ID --tier TIER --writer MODEL [options]
+       launch.sh --issue ID --policy PATH [options]
 
   --issue ID           Tracker issue identifier, also the tab label (TUS-150)
-  --policy NAME|PATH   Preset name (opus-astra) or a path to a policy file
+  --tier TIER          Review tier from the issue's label: simple, standard
+                       or complex (the shared policy defines each)
+  --writer MODEL       Writer model with effort (xai/grok-4.7:xhigh)
+  --orchestrator MODEL Orchestrator model (default: the shared policy's)
+  --policy PATH        A policy file instead of the shared one; its
+                       top-level keys override the tier for this run
   --tracker NAME       linear (default), jira or none
   --checkout DIR       Existing branch clone to continue in (default: auto,
                        which makes a new clone from the seed)
@@ -24,7 +30,7 @@ Usage: launch.sh --issue ID --policy NAME_OR_PATH [options]
 USAGE
 }
 
-issue="" policy="" tracker="linear" checkout="" objective="" seed="$PWD"
+issue="" policy="" tier="" writer="" orchestrator="" tracker="linear" checkout="" objective="" seed="$PWD"
 workspace="${HERDR_WORKSPACE_ID:-}" workflow="goal-select" resolve_only=""
 timeout=60 max_workers=4
 policy_dir="${ATOMIC_POLICY_DIR:-$HOME/.config/atomic/goal-select-models}"
@@ -33,6 +39,9 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --issue) issue="$2"; shift 2 ;;
     --policy) policy="$2"; shift 2 ;;
+    --tier) tier="$2"; shift 2 ;;
+    --writer) writer="$2"; shift 2 ;;
+    --orchestrator) orchestrator="$2"; shift 2 ;;
     --tracker) tracker="$2"; shift 2 ;;
     --checkout) checkout="$2"; shift 2 ;;
     --objective) objective="$2"; shift 2 ;;
@@ -51,18 +60,24 @@ fail() { echo "Error: $1" >&2; exit 1; }
 
 [ "${HERDR_ENV:-}" = 1 ] || fail "not running inside a Herdr pane."
 [ -n "$issue" ] || fail "--issue is required."
-[ -n "$policy" ] || fail "--policy is required."
+# A follow-up in an existing clone is small work on reviewed code: it gets
+# the simple tier unless told otherwise, and the gate is its proof.
+if [ -z "$tier" ] && [ -z "$policy" ] && [ -n "$checkout" ] && [ "$checkout" != auto ]; then tier="simple"; fi
+[ -n "$policy" ] || [ -n "$tier" ] || fail "--tier is required (or --policy for a policy file)."
+case "$tier" in ""|simple|standard|complex) ;; *) fail "--tier must be simple, standard or complex, got '$tier'." ;; esac
+[ -n "$policy" ] || [ -n "$writer" ] || fail "--writer is required with --tier."
 [ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
 command -v atomic >/dev/null || fail "atomic is not on PATH."
 
 case "$policy" in
-  */*|*.json) policy_path="$policy" ;;
+  "") policy_path="$HOME/.config/atomic/goal-select.jsonc" ;;
+  */*|*.json|*.jsonc) policy_path="$policy" ;;
   *) policy_path="$policy_dir/$policy.json" ;;
 esac
 [ -f "$policy_path" ] || fail "policy file '$policy_path' does not exist."
 
 # Prime directive: a model line never reviews its own work.
-same_line="$(python3 - "$policy_path" <<'PY'
+same_line="$(python3 - "$policy_path" "$tier" "$writer" <<'PY'
 import json, re, sys
 text = re.sub(r"(?m)^\s*//.*$", "", open(sys.argv[1]).read())
 try:
@@ -70,8 +85,9 @@ try:
 except ValueError:
     sys.exit(0)  # JSONC this check cannot parse; the workflow validates it
 line = lambda m: (m or "").split("/")[-1].split(":")[0]
-writer = line(policy.get("writer_model") or policy.get("orchestrator_model"))
-reviewers = {line(v) for k, v in policy.items() if k.endswith("reviewer_model") and v}
+tier = policy.get("review_tiers", {}).get(sys.argv[2], {}) if sys.argv[2] else {}
+writer = line(sys.argv[3] or policy.get("writer_model") or policy.get("orchestrator_model"))
+reviewers = {line(v) for k, v in list(tier.items()) + list(policy.items()) if k.endswith("reviewer_model") and v}
 if writer and writer in reviewers:
     print(writer)
 PY
@@ -143,6 +159,9 @@ done
 command_line="/workflow $workflow"
 [ "$tracker" = none ] || command_line="$command_line tracker=$tracker tracker_issue=$issue"
 command_line="$command_line model_policy_path=$policy_path"
+[ -z "$tier" ] || command_line="$command_line review_tier=$tier"
+[ -z "$writer" ] || command_line="$command_line writer_model=$writer"
+[ -z "$orchestrator" ] || command_line="$command_line orchestrator_model=$orchestrator"
 [ -z "$checkout" ] || command_line="$command_line branch_checkout_dir=$checkout"
 [ -z "$resolve_only" ] || command_line="$command_line resolve_only=true"
 if [ -n "$objective" ]; then
@@ -170,4 +189,5 @@ done
 
 echo "run_id=$run_id"
 echo "policy=$policy_path"
+echo "tier=${tier:-from policy} writer=${writer:-from policy}"
 echo "state=$(pane_state "$pane")"

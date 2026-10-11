@@ -1,26 +1,40 @@
-# Model tiers and policy selection
+# Model tiers: three dials per launch
 
 Each tracker issue carries one label from the single-select group
-`Model tier`. The label says how strong a writer the issue needs; the
-label's description names the goal-select policy preset to launch with.
-Changing a tier's policy is one edit to that label's description, with no
-change to any issue.
+`Model tier`. The label is the issue's **review tier**, and it also says
+which writers suit the issue. A launch sets three dials:
 
-| Label | Meaning | Policies and weights at first use (2026-10-04) |
+- `--tier`: the review tier, from the label. The shared policy
+  (`~/.config/atomic/goal-select.jsonc`, in dotfiles) defines each tier's
+  panel, reviewer models, quorum and round cap, and pins the model that
+  re-verifies findings (`reverify_model` under `defaults`). Left unset,
+  re-verification runs on the launching session's model, which can be the
+  writer's own line.
+- `--writer`: the writer model with effort, chosen from the label's list
+  by its weights.
+- The orchestrator, from the policy's `defaults` unless `--orchestrator`
+  says otherwise. Sol at medium coordinates well and costs little.
+
+| Label | Review panel | Writers and weights (2026-10-06, weights revised the same day) |
 | --- | --- | --- |
-| `tier-frontier` | Needs the strongest writer | `sol-astra` 95, `opus-fable` 5 |
-| `tier-standard` | A cheaper writer with strong reviewers is enough | `grok-astra` 60, `kimi-opus` 40 |
-| `tier-simple` | A cheaper writer and standard reviewers | `glm-astra` 50, `kimi-astra` 40, `composer-grok` 10 |
+| `tier-complex` | two seats on Astra, completion with evidence and risk; both approve (three seats until 2026-10-09: the third kept raising what the other two raised) | `openai/gpt-6.1-sol:xhigh` 70, `anthropic/claude-opus-5-5:high` 30 (Sol raised from high on 2026-10-09, after a milestone's trial showed cleaner units) |
+| `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` 60, `kimi-coding/k3:max` 40 |
+| `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 30, `kimi-coding/k3:max` 20 |
 
 The label description in the tracker is the authority (it starts
-`Policies: <preset> <weight>, ...`); this table records what it said when
-the scheme was set up.
+`Writers: <model> <weight>, ...`); this table records what it said when
+the scheme was set up. Changing a tier's writers is one edit to the label;
+changing a tier's reviewers is one edit to the shared policy. A running
+run takes such an edit from its next turn: it resolves a turn's models,
+the panel included, when the turn starts, so the review that ends a turn
+already under way still runs the old panel. Say that when you report the
+change.
 
-## Choosing the policy for a launch
+## Choosing the writer for a launch
 
-1. A policy the user names for that issue or batch wins.
+1. A writer or policy file the user names for that issue or batch wins.
 2. A standing override for a time window comes next (see below).
-3. Otherwise read the issue's tier label and choose one of the presets its
+3. Otherwise read the issue's tier label and choose one of the writers its
    description lists, as the next section describes.
 4. No tier label: classify the issue with the rubric, add the label, and
    tell the user which tier you chose and why in the launch report.
@@ -35,9 +49,10 @@ criteria are checkable without interpretation.
 
 ## The one rule no weighting overrides
 
-A model line never reviews its own work: the writer and every reviewer in
-a preset must be different model lines (`opus-astra` and `kimi-opus` are
-fine; a preset with one model on both sides is not). When the user wants
+A model line never reviews its own work: the writer and every reviewer on
+the tier's panel must be different model lines (Sol writing for Astra
+reviewers is fine; Sol writing for the simple tier's Sol reviewer is not,
+and the launcher and the workflow both refuse it). When the user wants
 one model used as much as possible, launch it as writer in some harnesses
 and as reviewer in others. Do not write a new preset to get around this.
 
@@ -50,10 +65,10 @@ and keep the running mix near the weights.
 Decide in this order:
 
 1. **Fit.** Some issues call for one preset whatever the mix:
-   - `opus-fable` is for the hardest frontier issues only: several
-     frontier triggers at once (for example a lifecycle change with a
+   - `opus-fable` is for the hardest complex issues only: several
+     complex triggers at once (for example a lifecycle change with a
      migration and concurrency), a design left open by the issue, or a
-     frontier issue that has already bounced twice on `sol-astra`.
+     complex issue that has already bounced twice on `sol-astra`.
    - In the standard tier, prefer the preset with the stronger reviewers
      when the risk is in judgment (accessibility behavior, user-facing
      copy, anything security-adjacent), and the other when the risk is in
@@ -70,7 +85,7 @@ State the preset and the reason for each issue in the launch report, for
 example "TUS-88: `grok-astra` (wide, mechanical; Grok is under its share)".
 
 Compute budgets move, so expect standing overrides: the user may say "use
-`opus-astra` for frontier work until 17:00 today". Apply an override for
+`opus-astra` for complex work until 17:00 today". Apply an override for
 exactly the window given, then return to the label's policies without
 being asked. Do not edit a label description for a temporary override; edit
 it when the user changes the standing mix.

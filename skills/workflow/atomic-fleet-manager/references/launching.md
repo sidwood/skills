@@ -16,7 +16,7 @@
    default branch because a new clone copies its committed HEAD only:
 
    ```bash
-   scripts/launch.sh --issue TUS-150 --policy opus-astra
+   scripts/launch.sh --issue TUS-150 --tier complex --writer anthropic/claude-opus-5-5:xhigh
    ```
 
    The script creates the tab, starts `atomic`, submits the `/workflow`
@@ -43,7 +43,7 @@ retrying, and reuse or report the tab instead of creating a second one.
 Continue in the same clone so its commits are kept:
 
 ```bash
-scripts/launch.sh --issue TUS-144 --policy glm-astra \
+scripts/launch.sh --issue TUS-144 --tier simple --writer zai/glm-5.3:max \
   --checkout app.goal-tus-144-f3aff23b \
   --objective "Follow-up after QA review of <commits>. Keep that work and fix: (1) ... (2) ..."
 ```

@@ -22,7 +22,7 @@ outside manager.
    directory is the project's seed checkout on its default branch. Label
    your own tab `FM` (`herdr tab rename "$HERDR_TAB_ID" FM`).
 2. **Bind the project.** Establish the tracker (default `linear`), the
-   default model policy preset, the repository's check commands and its
+   shared goal-select policy, the repository's check commands and its
    landing rules from the project's and the user's instruction files. Ask
    only for what those do not say.
 3. **Survey.** `scripts/status.sh` for harnesses already running, the tab
@@ -32,7 +32,7 @@ outside manager.
 4. **Start the QA agent** if there is none, and give it the standing brief:
    [references/qa-agent.md](references/qa-agent.md).
 5. **Agree the first batch.** Propose unblocked issues from the tracker,
-   each with a policy chosen from its `Model tier` label's presets
+   each with its review tier and a writer chosen from its `Model tier` label
    ([references/model-tiers.md](references/model-tiers.md)); start what
    the user names or approves.
 6. **Launch**, one harness per issue, trial first:
@@ -92,7 +92,7 @@ repository; without one, ask before the first train.
 - Tab label equals the issue identifier, one harness per tab; `FM` and `QA`
   are the two fixed tabs.
 - Policy per issue: the one the user named, otherwise your choice among
-  the weighted presets its tier label lists, with the reason reported.
+  the weighted writers its tier label lists, with the reason reported.
 - A pane that leaves `working` has not necessarily finished: a harness can
   pause itself, for example on an unmet blocker. Read the pane and report
   what it says.

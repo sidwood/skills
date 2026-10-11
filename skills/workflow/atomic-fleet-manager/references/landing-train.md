@@ -230,6 +230,15 @@ disposed it; each kept a five-second autosave timer, and every test used
 one storage key. The file passed alone in three seconds and failed in the
 gate at 5.3.
 
+## Follow-ups are simple-tier
+
+A follow-up run in an existing clone (`launch.sh --checkout`) is small
+work on code already reviewed: a rebase, a gate failure, a QA finding. The
+launcher gives it the simple tier (one reviewer) unless `--tier` says
+otherwise, tells it to run only the suites it touches, and relies on the
+gate for the rest. Raise the tier only when the finding shows the writer
+was out of its depth.
+
 ## Two gates at a time
 
 `gate.sh` takes one of `GATE_SLOTS` machine-wide slots (default 2; the
