@@ -11,7 +11,7 @@ First run on 2026-10-04 (two trains, four issues).
 2. Make one staging clone from the seed, reused for later trains:
 
    ```bash
-   git bc-add --offline <seed> train-1
+   git bc-add --offline <seed> train
    ```
 
    The repository's `bc.postadd` installs dependencies and prepares the
@@ -178,6 +178,44 @@ push, over the stacked range:
   hook never sees a commit that was rebased or made where hooks were off.
 - Better still, give the repo a pre-push hook that does all three, so
   the seed's own push is the gate.
+
+## The gate is one script, shared with the harnesses
+
+`templates/gate.sh` is the project's landing gate: install, database
+reset, typecheck, lint, unit, integration, the full e2e suite through the
+locked `e2e-check.sh`, and the whole component suite with two workers,
+ending in `GATE_OK`. Copy it to the seed's `.atomic/fleet/gate.sh` and
+adapt the commands once per project. `templates/train.sh` stacks a
+clone's commits onto the seed tip in the staging clone and runs that
+gate; `EXTRA_CLONES="dir=base ..."` stacks several finished issues into
+one train. The launcher tells every harness to run the same gate on its
+clone as its final step and to report approved only on `GATE_OK`, so a
+train rarely fails the gate for something the harness could have seen.
+
+## Two gates at a time
+
+`gate.sh` takes one of `GATE_SLOTS` machine-wide slots (default 2; the
+lock is `/tmp/<project>-gate.lock`) and then waits for the 1-minute load
+to fall under 12 before it starts its suites. It began as one slot on
+2026-10-06 and went to two the same night: with one gate running the
+machine measured 84% idle, so the queue, not the processor, was the
+limit. The end-to-end step has its own lock and never overlaps.
+A harness's own final gate and a train's gate queue behind each other and
+print `GATE_WAITING` while they wait. Without this, harnesses launched
+together reach their gates together: on 2026-10-06 four gates side by side
+took an 18-core machine to a load of 21, and Atomic's database health
+probe (1 second to connect, 3 to answer, one retry) failed a stage on a
+healthy server.
+
+- A finished harness waiting in the queue costs nothing; do not stop a
+  waiting gate.
+- Only the writer runs the gate, once per round. A reviewer that reruns it
+  doubles the queue: on 2026-10-06 three harnesses kept the one gate busy
+  for 100 minutes this way. The launcher tells reviewers to read the
+  writer's gate log instead; the train's gate is the independent run.
+- When two harnesses are approved while a train waits for the gate, stop
+  the waiting train and restack it with both (`EXTRA_CLONES`): one gate
+  run instead of two.
 
 ## Pushing unattended
 

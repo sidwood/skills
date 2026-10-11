@@ -82,6 +82,13 @@ chat="$(agent create-chat 2>/dev/null | tail -1)"
 
 writer_rules="Rules: work only inside this checkout ($clone). Read AGENTS.md first and follow it, including how to run commands and the commit-message rules (imperative subject of at most 50 characters, no attribution trailers). The work definition is the file .atomic/composer-grok/brief.md; its acceptance criteria are the contract, so do exactly what they require and nothing beyond. Run the checks AGENTS.md names for the code you touched (type check, lint, the relevant test suites) and fix what fails; this machine runs several harnesses at once, so run suites one at a time and pass --workers=${VITEST_MAX_WORKERS:-4} to Playwright. Before stating any command, path, port or name in code or documentation, confirm it exists in this repository; when you correct a mistake, search the whole repository for the same mistake and correct every instance the issue covers. Commit your work with a body that says why the change was made and does not mention the tracker issue number; never push, never open a pull request, never change the tracker. Finish with a short summary: what you changed, which checks you ran with their results, and anything you could not do."
 
+# Where the project has a landing gate, the writer runs it before it reports,
+# as every Atomic harness does, so an approval means the gate passed.
+gate="$(git -C "$clone" config --get bc.source 2>/dev/null || true)/.atomic/fleet/gate.sh"
+if [ -x "$gate" ]; then
+  writer_rules="$writer_rules Final step before your summary: run the landing gate on this checkout, $gate $clone (install, typecheck, lint, unit, integration, the full e2e suite and the whole component suite, about 25 minutes; never run pnpm test:e2e directly, the gate serializes it), fix what it names, and quote its last line. Report done only when that line is GATE_OK."
+fi
+
 round=0
 while [ "$round" -lt "$rounds" ]; do
   round=$((round + 1))

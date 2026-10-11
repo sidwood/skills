@@ -82,3 +82,14 @@ after that long), `--workspace ID`.
 - On every status read, compare each at-rest harness against what you
   expect: finished and landed, finished and queued for a train, or blocked
   with a question. Anything else needs action now.
+
+## "Command aborted" in a harness pane
+
+Atomic delivers a message to a busy stage by aborting the command that
+stage has in the foreground. An orchestrator waiting on its writer with
+`sleep` shows this every time a progress update or the main chat's
+15-minute alignment check arrives; it is harmless there. It is not
+harmless for a long command: a suite or the gate in the foreground is
+killed by the next message. The launcher tells harnesses to run those in
+the background and poll, and a message from the fleet manager has the same
+effect, so send one only when it is worth interrupting a poll.
