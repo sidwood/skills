@@ -14,11 +14,16 @@ standing brief instead if it has not had one.
 ```bash
 herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd <seed> --label QA --no-focus
 herdr agent start qa --kind claude --pane <root pane id> -- \
-  --model claude-fable-5-1 --effort high --name QA
+  --model claude-opus-5-5 --effort xhigh --name QA
 herdr agent prompt qa "<standing brief>" --wait --timeout 120000
 ```
 
-- Model and effort are the user's to change; these are the defaults.
+- Model and effort are the user's to change; these are the defaults
+  (Opus 5.5 at xhigh since 2026-10-06; Fable 5.1 at high before that).
+- When the QA agent changes, ask the outgoing one to write a handover
+  file first (`.atomic/fleet/qa-handover.md`: live stack, scripts,
+  conventions, counts, open findings) and keep its probe scripts under
+  `.atomic/fleet/qa-scripts/`; brief the successor to read both.
 - Start it in the permission mode the user's other agents in this workspace
   use. Do not add a permission-bypass flag on your own; ask once if the
   mode is unclear, since the QA agent runs test suites and browsers.
@@ -132,3 +137,17 @@ items in one pass (its fix comes back as its own train) or state plainly
 which it could not finish and why. QA raises that with the fleet manager,
 who decides with the user; QA does not send the issue back to a harness
 itself.
+
+## Measuring the QA agent
+
+`.atomic/fleet/qa-eval/qa-metrics.py <transcript> <label>` extracts
+per-train metrics from a QA agent's Claude Code transcript (duration,
+verdict, blocking and non-blocking findings, live checks, probe scripts,
+tickets filed, tokens where recorded). Run it on the outgoing agent's
+transcript before a model change and on the new one's after a few days;
+the comparison is the evidence for keeping or reverting the change.
+
+
+Say in the brief that the staging clone and the harness clones are the
+fleet manager's: QA never removes or prunes them. One QA agent removed the
+staging clone while tidying before a handover.
