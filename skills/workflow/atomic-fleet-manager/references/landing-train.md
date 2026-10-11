@@ -161,3 +161,18 @@ After the QA agent approves a train, remove each of its harnesses with
 `scripts/cleanup.sh --clone <dir> --tab <tab>`. It refuses, and removes
 nothing, unless every commit in the clone is on the remote default branch.
 Do not drop the database, close the tab or remove the clone by hand first.
+
+## Pushing unattended
+
+An SSH key held by a password manager's agent stops answering when its owner is away from the keyboard, even with the screen awake, so pushes hang overnight. Land on the seed anyway (the reviewer reads the seed, and says so in its report), and keep the landed clones until origin has their commits.
+
+To push without the agent, point only the seed's push at HTTPS and let the GitHub CLI answer for it, in the seed's own config:
+
+```bash
+git config --local remote.origin.pushurl https://github.com/<owner>/<repo>.git
+git config --local --replace-all credential.https://github.com.helper ""
+git config --local --add credential.https://github.com.helper "!$(command -v gh) auth git-credential"
+git push --dry-run origin main   # proves it without changing anything
+```
+
+Ask the user before changing how their repository authenticates. Always push with a time limit, so a prompt cannot hang the loop.

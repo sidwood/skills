@@ -43,7 +43,13 @@ changed_lines() { git -C "$seed" show --format= "$1" | grep -E '^[+-]' | grep -v
 clone="$(cd "$clone" && pwd)"
 [ -z "$(git -C "$clone" status --porcelain)" ] || fail "'$clone' has uncommitted changes."
 
-git -C "$seed" fetch -q origin
+# The fetch URL may be SSH behind an agent that locks when the user is away.
+# Fall back to the push URL, which a seed set up for unattended pushes has
+# over HTTPS, and update the same remote-tracking refs from it.
+if ! git -C "$seed" fetch -q origin 2>/dev/null; then
+  push_url="$(git -C "$seed" remote get-url --push origin)"
+  git -C "$seed" fetch -q "$push_url" "+refs/heads/*:refs/remotes/origin/*"
+fi
 git -C "$seed" fetch -q "$clone" HEAD
 tip="$(git -C "$seed" rev-parse FETCH_HEAD)"
 
