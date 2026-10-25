@@ -99,6 +99,38 @@ scripts/cloud-fetch.sh --unit m2-u8        # after READY
   small one can be fixed locally instead.
 - After the unit is Done, ask for the two remote branches to be deleted.
 
+## Pull requests instead of ready branches (from 2026-10-14)
+
+**REINSTATED 2026-10-17 for cloud units (Sid):** each cloud unit is a pull request again, merged into origin main by rebase after its CI pipeline, by the user or the fleet manager. Local units still land by train. Before every train and landing, fast-forward the seed from origin main (`land.sh` does it); a code merge on origin during a train's gate means restack and gate again, so merge pull requests between trains where you can.
+
+**ENDED 2026-10-14 23:50 (Sid): "we're done with that. I want you to get the rest of the work in just using a release train as per usual."** Cloud units hand back ready branches and land by train again. The section below is kept as a record of the trial, PRs 4 to 12. Its three-browser rule still applies to any branch before it joins a train.
+
+Where the repository has a hosted pipeline and review bots, a unit comes
+back as one DRAFT pull request from `unit/<key>`, not a `ready/<key>`
+branch. The repository's own note (Casefile Crafter: `.context/remote-unit.md`)
+holds the agent's side; the fleet manager's side is:
+
+- Watch for new heads on `unit/*` pull requests (a loop over the host's
+  pull request list, keyed by number and head commit); review each push
+  with a helper from a different family than the writer and post the
+  findings as a comment.
+- Review rounds never rewrite a draft's history. Each fix is a
+  `git commit --fixup=<sha>` pushed plainly, so inline bot comments stay on
+  their lines and each fix reads as its own commit. A strict commit check
+  in static analysis fails while a `fixup!` commit remains, which marks
+  the draft unmergeable. When every finding is answered, fold once
+  (`GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/main`), push
+  once with a lease, and only then tell the user it is ready.
+- The user marks it ready (each ready push buys a full pipeline run) and
+  merges by rebase. The pipeline's verdict replaces the landing train.
+  The fleet manager then moves the tracker, hands the merged range to QA
+  where the unit's tier calls for it, and fills the bot ledger.
+- A milestone unit from a local harness can take the same road at the
+  user's request: rebase its commits onto main in a scratch clone, push
+  `unit/<key>`, open the draft, and work the bot findings as above.
+
+- Before approving, run every new or changed component or journey case on all three browsers (`--project chromium --project firefox --project webkit`, `--repeat-each 4`) in a scratch clone with the tracked `apps/web/.env.example` copied to `apps/web/.env`. The full run stops at the first failure and cancels the other browser jobs, so one WebKit-only case costs a whole run (PR 9, 2026-10-14: WebKit does not focus a button on a mouse click).
+
 ## What the first handback showed
 
 - The branch came back with clean commit messages and none of the files
