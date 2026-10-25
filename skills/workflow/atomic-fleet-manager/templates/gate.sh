@@ -145,24 +145,60 @@ fi
 # change to docs and hooks). Hold the e2e lock for the component suite, so
 # no e2e servers are up beside it. Same directory and protocol as
 # e2e-check.sh.
-e2e_lock="${TMPDIR:-/tmp}/casefilecrafter-e2e-check.lock"
-component_lock_deadline=$(($(date +%s) + 3600))
+# Component slots (Sid, 2026-10-11): up to COMPONENT_SLOTS suites at once
+# (default 2). Each checkout serves its fixtures on its own port, and the
+# end-to-end servers left ports 3000 and 4000, so the limit is the machine's
+# CPU: one suite drives three engines with two workers.
+# Slot 1 keeps the old lock name, so a gate started before this change still
+# shares it.
+component_slots="${COMPONENT_SLOTS:-2}"
+component_lock_base="${TMPDIR:-/tmp}/casefilecrafter-e2e-check.lock"
+component_slot_dir() { if [ "$1" = 1 ]; then echo "$component_lock_base"; else echo "$component_lock_base.$1"; fi; }
+# A landing train waits longer than a harness: it is the work that ships.
+component_lock_wait=3600
+[ "${name##*.}" = train ] && component_lock_wait=10800
+component_lock_deadline=$(($(date +%s) + component_lock_wait))
 component_lock_waited=0
-while ! mkdir "$e2e_lock" 2>/dev/null; do
-  lock_holder="$(cat "$e2e_lock/pid" 2>/dev/null)"
-  if [ -n "$lock_holder" ] && ! kill -0 "$lock_holder" 2>/dev/null; then
-    rm -rf "$e2e_lock"
-    continue
-  fi
+# A landing train goes first (Sid, 2026-10-11): while one waits for a slot,
+# a harness's gate does not take one. The train marks itself waiting with a
+# file named by its pid; a marker whose process is gone is ignored.
+component_priority_dir="${TMPDIR:-/tmp}/casefilecrafter-components.priority"
+is_train=0
+[ "${name##*.}" = train ] && is_train=1
+if [ "$is_train" = 1 ]; then mkdir -p "$component_priority_dir"; : >"$component_priority_dir/$$"; fi
+train_waiting_for_components() {
+  local f p
+  for f in "$component_priority_dir"/*; do
+    [ -e "$f" ] || continue
+    p="$(basename "$f")"
+    if kill -0 "$p" 2>/dev/null; then return 0; fi
+    rm -f "$f"
+  done
+  return 1
+}
+take_component_slot() { # sets e2e_lock
+  local n=1 dir holder
+  while [ "$n" -le "$component_slots" ]; do
+    dir="$(component_slot_dir "$n")"
+    if mkdir "$dir" 2>/dev/null; then e2e_lock="$dir"; return 0; fi
+    holder="$(cat "$dir/pid" 2>/dev/null)"
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$dir"; continue; fi
+    n=$((n + 1))
+  done
+  return 1
+}
+e2e_lock=""
+while { [ "$is_train" = 0 ] && train_waiting_for_components; } || ! take_component_slot; do
   if [ "$(date +%s)" -ge "$component_lock_deadline" ]; then
-    echo "COMPONENTS_FAILED: pid $lock_holder held the e2e lock for an hour"
+    echo "COMPONENTS_FAILED: all $component_slots component slots stayed taken for $((component_lock_wait / 60)) minutes"
     echo "GATE_FAILED"; exit 1
   fi
-  [ $((component_lock_waited % 300)) = 0 ] && echo "COMPONENTS_WAITING: another checkout's e2e stage or component suite is running (pid $lock_holder)"
+  [ $((component_lock_waited % 300)) = 0 ] && echo "COMPONENTS_WAITING: all $component_slots component slots are taken, or a landing train is waiting first"
   sleep 5
   component_lock_waited=$((component_lock_waited + 5))
 done
 echo $$ >"$e2e_lock/pid"
+[ "$is_train" = 1 ] && rm -f "$component_priority_dir/$$"
 trap 'rm -rf "$gate_lock" "$e2e_lock"' EXIT
 (cd "$checkout" && pnpm --filter @casefilecrafter/e2e test:components --workers 2) >"$logs/components.log" 2>&1
 components_exit=$?
