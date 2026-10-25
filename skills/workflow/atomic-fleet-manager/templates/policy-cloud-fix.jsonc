@@ -3,7 +3,7 @@
 // 2026-10-11 12:53: "run any cloud unit fixes (eg H-C5-FIX) with Sol 6.1
 // xhigh and 1 x Astra 6 high review." Launch from the default Atomic
 // directory with
-//   launch.sh --policy .atomic/fleet/policy-cloud-fix.jsonc --tier simple
+//   launch.sh --policy /Users/sidwood/code/casefilecrafter/.atomic/fleet/policy-cloud-fix.jsonc --tier simple
 //             --writer openai/gpt-6.1-sol:xhigh
 // A cloud unit was written by Composer and reviewed by Grok in the cloud, so
 // neither Sol nor Astra has seen the work before; the one reviewer is Astra

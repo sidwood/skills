@@ -164,3 +164,6 @@ When a running unit reports an "ownership blocker", read its checkpoint
 for the exact files, check nobody else holds them, and grant them in its
 pane as an authoritative ruling that names the earlier denial it
 supersedes. Leave a gate that is running to finish.
+
+
+- A relative `--policy` path is resolved by the workflow against the run's checkout; a `--checkout` clone has no `.atomic/fleet`, so the run silently takes the shared policy's tiers (and refuses when that puts the writer on its own panel). `launch.sh` now passes the path absolute (2026-10-15).

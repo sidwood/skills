@@ -91,6 +91,10 @@ case "$policy" in
   *) policy_path="$policy_dir/$policy.json" ;;
 esac
 [ -f "$policy_path" ] || fail "policy file '$policy_path' does not exist."
+# The workflow resolves a relative policy path against the run's checkout, and
+# a --checkout clone has no .atomic/fleet: it then falls back to the shared
+# policy's tiers (M5-A4, 2026-10-15). Pass it absolute.
+policy_path="$(cd "$(dirname "$policy_path")" && pwd)/$(basename "$policy_path")"
 
 # Prime directive: a model line never reviews its own work.
 same_line="$(python3 - "$policy_path" "$tier" "$writer" <<'PY'
