@@ -67,6 +67,8 @@ Presets live in `~/.config/atomic/goal-select-models/`, named
 
 A run id is the full UUID or its first 8 hexadecimal characters.
 
+Send these from the tab's main chat, the view with the `BACKGROUND` panel. A pane left in the graph view swallows the typed text, and Enter there opens a stage chat instead; press ctrl+x until the `BACKGROUND` panel shows, then type the command, Enter to take the completion, Enter to run it. The pane answers `Run <id> paused and can be resumed.`
+
 ## How steering travels (Intercom)
 
 Atomic sessions and workflow stages message each other with the `intercom`
