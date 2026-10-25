@@ -46,6 +46,14 @@ whose allowance the user wants used. The tab gets
 `ATOMIC_CODING_AGENT_DIR`, and Atomic starts with `ANTHROPIC_API_KEY`
 unset so the directory's login is the one used.
 
+- The run's ledger and artifacts live under that directory's own
+  `workflows/runs/`, not the default one. Point the watcher for such a run
+  there, or it never fires: a run that died on a provider error sat
+  unnoticed for half an hour that way (2026-10-12).
+- Which account a harness draws on is the owner's choice and can change
+  the same day. Before answering "is anything on that account?", list the
+  running processes whose environment names the directory and group them
+  by working folder; do not answer from memory of what was launched.
 - The directory has only the logins made under it. `launch.sh` checks
   each provider the run needs against it and refuses a launch that would
   need one it lacks, a fallback included.
