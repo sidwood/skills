@@ -264,6 +264,19 @@ open findings listed in the final report. It is not a failure:
 `needs_human` is different: the orchestrator produced no work or the
 reviewers could not run. Read the pane and the ledger before anything else.
 
+One case of it is common and costs nothing but a relaunch: the ledger's
+last lifecycle line reads "Orchestrator failed before producing a
+receipt: CleanupFailed ... Session shutdown failed", with no review, yet
+`orchestrator-receipt.md` in the run's artifact folder says ready for
+review, the clone is clean and its gate log ends `GATE_OK` on the head
+commit. The work is whole; only the session died. Close the tab and
+relaunch in the clone with `--checkout` as a review run. The objective
+names the head commit and its commits, the gate log's path and the first
+run's notes, and says: the writer's turn is a check only (clean tree,
+head, gate log), no code, no rebase and no second gate, straight to
+review; the writer writes only if the review asks for changes. Such a
+run takes about twenty minutes.
+
 ## The gate is one script, shared with the harnesses
 
 `templates/gate.sh` is the project's landing gate: install, database
