@@ -74,14 +74,55 @@ whole run exit 0 even though a check failed.
 
 ## When an issue does not fit
 
-- **Rebase conflict:** abort the rebase, leave the issue out of this train,
-  and send it back to its own clone as a follow-up run whose objective is to
+- **Rebase conflict:** where both sides only add (imports, list entries,
+  methods, test cases), resolve it yourself, keeping both, as "Rehearse a
+  rebase before its train" below describes. Where the two sides disagree
+  about behavior, abort the rebase, leave the issue out of this train, and
+  send it back to its own clone as a follow-up run whose objective is to
   rebase onto the seed and resolve the conflict.
 - **Gate fails:** find the issue that breaks it by dropping issues from the
   stack one at a time, land the rest, and bounce that issue with the failing
   output in the objective.
 - **Two migrations:** land one; the other regenerates its migration on the
   new seed tip in a follow-up run.
+
+## Rehearse a rebase before its train
+
+Units that finish past their final gate are never told to rebase (the
+note makes them gate again), so the fleet manager rebases the later one
+at landing. Do it in a scratch clone, never in the unit's own while its
+run is alive, and before the unit is approved if its tip is stable:
+
+```bash
+git clone -q --no-checkout <unit clone> <scratch>/u && git -C <scratch>/u checkout -q -b cut <sha>
+git -C <scratch>/u fetch -q <seed, or the staging clone when a train is running> <ref>
+git -C <scratch>/u rebase FETCH_HEAD     # resolve; chain steps with &&; grep for markers before each git add
+```
+
+Train the scratch clone itself (`train.sh N <scratch>/u <new base>`).
+
+A clean textual merge is not a working tree. When two or more units
+change the same page or module, check the stacked tree before the train
+spends forty minutes finding out, most cheaply first:
+
+1. `pnpm install` in the scratch clone; copy each tracked `.env.example`
+   it needs to `.env` (never a real env file).
+2. Typecheck. It catches what auto-merge joins silently: the same name
+   declared by both units.
+3. The affected workspace's unit and integration suites, with a few
+   workers so a running gate is not starved.
+4. The page's browser or component specs, in every engine.
+
+What this found the first time it was done (three web units on one page,
+all three gates green alone): a store declared twice in a spec; two page
+specs missing a browser-API stub that a third unit's new child component
+needs; a component spec that fails on any unexpected request meeting a
+read another unit's code now makes; and three mocks that each kept a
+private copy of the state one of them must own (pass one shared store,
+seeded first by the mock with the richest fixture). Fix a merge fault
+inside the rebased commit that introduced it; put a fix no single unit
+could have made in its own commit on top, and tell QA that no reviewer
+has seen those commits.
 
 ## Review in aggregate
 
