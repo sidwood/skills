@@ -54,6 +54,8 @@ whole run exit 0 even though a check failed.
 
 ## Land
 
+**Land with a script that stops before pushing when the fast-forward fails** (Casefile Crafter: `.atomic/fleet/fm-scripts/land.sh <train>`). Never pipe the merge into anything: on 2026-10-16, `git merge --ff-only FETCH_HEAD | tail -1 && try-push.sh` hid a refused fast-forward, because the pipe's exit status was `tail`'s. The push then sent a commit someone else had just made on the seed. Someone else may commit on the seed: when `main` is no longer the train's base, restack the train onto the new tip.
+
 1. Confirm the seed is on its default branch with a clean tree. An
    uncommitted change in the seed stops the train; resolve it first.
 2. If the seed moved since the stack was built, rebase the train onto the
