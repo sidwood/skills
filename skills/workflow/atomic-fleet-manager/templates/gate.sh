@@ -200,8 +200,44 @@ done
 echo $$ >"$e2e_lock/pid"
 [ "$is_train" = 1 ] && rm -f "$component_priority_dir/$$"
 trap 'rm -rf "$gate_lock" "$e2e_lock"' EXIT
-(cd "$checkout" && pnpm --filter @casefilecrafter/e2e test:components --workers 2) >"$logs/components.log" 2>&1
-components_exit=$?
+# The component suite, with three guards against a dead test server
+# (2026-10-11: Node 26.10 aborted the Vite server mid-suite with "Lazy deopt
+# after a fast API call", every remaining case timed out at 30 s, and the
+# suite held the lock for two hours with every landing train behind it):
+# - it stops after COMPONENTS_MAX_FAILURES failures (default 25), so a dead
+#   server ends the run in minutes; a change that breaks many cases still fails;
+# - it stops at COMPONENTS_TIMEOUT seconds (default 2700) whatever happens;
+# - when the log shows the server died, it runs once more before failing.
+descendants() { local c; for c in $(pgrep -P "$1"); do descendants "$c"; echo "$c"; done; }
+components_limit="${COMPONENTS_TIMEOUT:-2700}"
+components_max_failures="${COMPONENTS_MAX_FAILURES:-25}"
+run_components() { # sets components_exit
+  (cd "$checkout" && pnpm --filter @casefilecrafter/e2e test:components --workers 2 --max-failures="$components_max_failures") >"$logs/components.log" 2>&1 &
+  local pid=$! waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$components_limit" ]; then
+      echo "COMPONENTS_TIMEOUT: the component suite ran past ${components_limit}s; stopped"
+      # shellcheck disable=SC2046  # One pid per word.
+      kill $(descendants "$pid") "$pid" 2>/dev/null
+      break
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+  wait "$pid"
+  components_exit=$?
+  [ "$waited" -lt "$components_limit" ] || components_exit=1
+}
+server_died() {
+  sed 's/\x1b\[[0-9;]*m//g' "$logs/components.log" |
+    grep -qE '^\[WebServer\] (abort:|FATAL|Fatal error|#  *Fatal)|Process from config\.webServer (exited|was not able)|ECONNREFUSED|ERR_CONNECTION_REFUSED|NS_ERROR_CONNECTION_REFUSED|Could not connect to (the )?server'
+}
+run_components
+if [ "$components_exit" != 0 ] && server_died; then
+  mv "$logs/components.log" "$logs/components.attempt1.log"
+  echo "COMPONENTS_RETRY: the component test server died during the suite (log kept as components.attempt1.log); running it once more"
+  run_components
+fi
 rm -rf "$e2e_lock"
 trap 'rm -rf "$gate_lock"' EXIT
 sed 's/\x1b\[[0-9;]*m//g' "$logs/components.log" | grep -E "^ +[0-9]+ (passed|failed|flaky|skipped)" | tr '\n' ' '; echo
