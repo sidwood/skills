@@ -32,6 +32,16 @@ First run on 2026-10-04 (two trains, four issues).
 
 ## Check
 
+**One full gate per piece of work, on the train (owner's ruling, Casefile Crafter, 2026-10-16).** Writers do not run the full gate. Each writer round ends:
+- with a rebase onto the seed's latest main;
+- then the writer's check: install, database reset, typecheck, lint, unit and integration (`check.sh`, ending `CHECK_OK`);
+- then the writer's own browser specs.
+
+The end-to-end and component suites run only on the train. Why:
+- The full gate took about 55 minutes and ran at least twice per unit.
+- Trains queued behind harness gates for the shared slots.
+- Train failures came from units built on stale bases meeting newer main, not from the units' own code; the writer's rebase catches those first.
+
 Run the repository's own gate once on the staging tip, from the staging
 clone's root: type check, lint, unit and integration suites. Record the
 counts. Say plainly which suites were not run (for example end-to-end).

@@ -167,3 +167,4 @@ supersedes. Leave a gate that is running to finish.
 
 
 - A relative `--policy` path is resolved by the workflow against the run's checkout; a `--checkout` clone has no `.atomic/fleet`, so the run silently takes the shared policy's tiers (and refuses when that puts the writer on its own panel). `launch.sh` now passes the path absolute (2026-10-15).
+- Writers rebase onto the seed's main, then run the writer's check (`check.sh`), never the full gate; `launch.sh`'s fleet note says so (2026-10-16). Briefs must say the same: no "finish with the full gate".
