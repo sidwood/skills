@@ -17,8 +17,8 @@
 # - Database: creates casefilecrafter-e2e-check-<checkout>-<pid>, migrates and
 #   seeds it, points the API, the worker and the e2e helpers at it, and drops
 #   it afterwards. It never uses casefilecrafter-local.
-# - Slots: up to E2E_CHECK_SLOTS runs go at once on this machine (default 1
-#   for now, see below; the script supports 3).
+# - Slots: up to E2E_CHECK_SLOTS runs go at once on this machine (default 3;
+#   a checkout from before the mock web server's own ports takes slot 1 only).
 #   Each takes a slot, and a slot has a port block and a Redis database of its
 #   own. The suite has taken its ports from the environment since the
 #   per-checkout ports landed (apps/e2e/test/support/e2e-ports.ts), so the
@@ -41,9 +41,10 @@ set -u
 
 PORTS=""
 REDIS_DB=""
-# One at a time until the mock web server stops racing for port 3310 between
-# checkouts (apps/e2e/test/support/mock-web-server.ts); then back to 3.
-SLOTS="${E2E_CHECK_SLOTS:-1}"
+# Up to three at a time. A checkout whose mock web server still scans the
+# shared 3310-3399 range (before its ports joined the checkout's block) may
+# only take slot 1, so two such runs never race for 3310.
+SLOTS="${E2E_CHECK_SLOTS:-3}"
 SLOT_BLOCKS="30010 30020 30030"
 SLOT_REDIS="8 9 12"
 WAIT_SECONDS="${E2E_CHECK_WAIT_SECONDS:-1200}"
@@ -115,6 +116,12 @@ grep -q '^E2E_USER_EMAIL=.' "$E2E_ENV" 2>/dev/null || fail "$E2E_ENV does not se
 
 # A few runs at a time on this machine: take the first free slot.
 case "$SLOTS" in 1 | 2 | 3) ;; *) SLOTS=3 ;; esac
+BLOCK_PORTS=8
+if ! grep -q 'MOCK_WEB_PORT_COUNT' "$CHECKOUT/apps/e2e/test/support/e2e-ports.ts" 2>/dev/null; then
+  SLOTS=1
+  BLOCK_PORTS=4
+  say "this checkout's mock web server predates its own ports: slot 1 only"
+fi
 deadline=$(($(date +%s) + WAIT_SECONDS))
 SLOT=0
 while [ "$SLOT" = 0 ]; do
@@ -142,7 +149,7 @@ HAVE_LOCK=1
 echo $$ >"$LOCK_DIR/pid"
 BLOCK="$(echo "$SLOT_BLOCKS" | cut -d' ' -f"$SLOT")"
 REDIS_DB="$(echo "$SLOT_REDIS" | cut -d' ' -f"$SLOT")"
-PORTS="$BLOCK $((BLOCK + 1)) $((BLOCK + 2)) $((BLOCK + 3))"
+PORTS="$(seq "$BLOCK" $((BLOCK + BLOCK_PORTS - 1)) | tr '\n' ' ')"
 
 waited=0
 while [ -n "$(listeners)" ]; do
@@ -177,11 +184,11 @@ docker exec redis redis-cli -n "$REDIS_DB" flushdb >/dev/null 2>&1 || fail "Redi
 
 # The Playwright config loads apps/e2e/.env over the shell environment, so a
 # pinned database or Redis there would win. Swap those lines for this run.
-if grep -Eq '^(E2E_DB_NAME|E2E_REDIS_URL|E2E_PORT_BLOCK|E2E_WEB_PORT|E2E_API_PORT|E2E_MAIL_PORT|E2E_MODEL_PORT|BASE_URL)=' "$E2E_ENV"; then
+if grep -Eq '^(E2E_DB_NAME|E2E_REDIS_URL|E2E_PORT_BLOCK|E2E_WEB_PORT|E2E_API_PORT|E2E_MAIL_PORT|E2E_MODEL_PORT|E2E_MOCK_WEB_PORT|BASE_URL)=' "$E2E_ENV"; then
   ENV_BACKUP="$E2E_ENV.e2e-check-backup-$$"
   cp -p "$E2E_ENV" "$ENV_BACKUP" || fail "could not back up $E2E_ENV"
   {
-    grep -Ev '^(E2E_DB_NAME|E2E_REDIS_URL|E2E_PORT_BLOCK|E2E_WEB_PORT|E2E_API_PORT|E2E_MAIL_PORT|E2E_MODEL_PORT|BASE_URL)=' "$ENV_BACKUP"
+    grep -Ev '^(E2E_DB_NAME|E2E_REDIS_URL|E2E_PORT_BLOCK|E2E_WEB_PORT|E2E_API_PORT|E2E_MAIL_PORT|E2E_MODEL_PORT|E2E_MOCK_WEB_PORT|BASE_URL)=' "$ENV_BACKUP"
     echo "E2E_DB_NAME=$DB"
     echo "E2E_REDIS_URL=$REDIS"
     echo "E2E_PORT_BLOCK=$BLOCK"
@@ -189,7 +196,7 @@ if grep -Eq '^(E2E_DB_NAME|E2E_REDIS_URL|E2E_PORT_BLOCK|E2E_WEB_PORT|E2E_API_POR
 fi
 
 export POSTGRES_URL="$URL" E2E_DB_NAME="$DB" E2E_REDIS_URL="$REDIS" E2E_PORT_BLOCK="$BLOCK"
-unset CI BASE_URL E2E_WEB_PORT E2E_API_PORT E2E_MAIL_PORT E2E_MODEL_PORT
+unset CI BASE_URL E2E_WEB_PORT E2E_API_PORT E2E_MAIL_PORT E2E_MODEL_PORT E2E_MOCK_WEB_PORT
 
 step() {
   local label="$1"
