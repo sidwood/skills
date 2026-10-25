@@ -141,3 +141,26 @@ parallel with X", "file collision with Y"): the script reads every issue
 named there as a blocker and will refuse. After a launch command, read its
 output and confirm a run id was printed before telling anyone, or the
 tracker, that the issue started.
+
+## A closed list expires when its owner lands
+
+A brief built while another unit is in flight closes that unit's files to
+the new one. If the owner has landed and closed by the time you launch,
+the list is stale, and a supervising chat follows it to the letter: told
+to "reuse the dialog, build no second one" while the dialog's files are
+closed, it builds neither and reports a contract conflict at the end of
+its first turn.
+
+Before every launch, for each "reuse X" or "build on X" in the brief:
+
+1. Check whether X's unit has landed.
+2. If it has, name X's files in the launch objective as the unit's to
+   extend, say what may be added (add, never rewrite; every existing spec
+   keeps passing), and name what in those files is still someone else's.
+3. If it has not, say which unit holds them and what the new unit does
+   until they land.
+
+When a running unit reports an "ownership blocker", read its checkpoint
+for the exact files, check nobody else holds them, and grant them in its
+pane as an authoritative ruling that names the earlier denial it
+supersedes. Leave a gate that is running to finish.
