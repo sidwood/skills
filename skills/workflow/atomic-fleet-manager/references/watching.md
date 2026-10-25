@@ -178,3 +178,15 @@ When a run ends at its round limit, the Atomic session in the pane is told the r
 - If it is the fix pass you would have launched, let it finish, tell the pane to start no further run, and accept the run by appending a line for it to the launch log.
 - If what is left does not merit a pass (no crash, an edge no client reaches, a demand to preserve an accident), tell the pane to quit the run, land the last gated commit, and give the reviewer's open findings to QA to rule on.
 - The launch note tells the session to report and stop when its run ends. A session can still ignore it; the comparison above is the safeguard.
+
+## Stopping a run on purpose, and draining for a restart
+
+`auto-resume.sh` restarts a run that has quit. That is its job, so it also undoes a stop you ordered: a run told to quit with a clean tree was resumed half a minute later and its writer worked on.
+
+- Stop the `auto-resume.sh` task first. Then give the order in the pane. Then read the pane and run `git status` in the clone before you say the run has stopped.
+- To drain the whole fleet (the owner needs the machine): the resumer, then the runs, then trains (a gate in its last stage is worth letting finish; land it if green), then the other watchers, helpers and the QA seat. Start nothing new.
+- A writer cut off mid-turn leaves uncommitted work. Leave it in the clone, save the same diff as a patch outside it, and write the relaunch objective so that the next writer treats it as an unfinished draft.
+- Look for stragglers by working directory, not by name: a process whose directory is a fleet clone is yours; an Atomic session in another project is not.
+- A restart empties `/private/tmp`: the session scratchpad, rehearsal clones and gate locks go. Save what is wanted (a rehearsed fix as a patch, helper scripts) under the fleet folder first.
+- Write the restart list at the top of the handover, in order: services, the tracker's and the seed's state to verify, the terminal multiplexer's new ids, watchers, the QA seat, each paused unit with its exact relaunch command. Give the owner a one-line prompt that points at it.
+
