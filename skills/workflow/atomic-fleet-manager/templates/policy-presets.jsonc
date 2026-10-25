@@ -1,0 +1,58 @@
+// The fleet's model presets (Sid, 2026-10-12 12:10): "Going forward, let's use
+// the following model presets."
+//   simple:   Sonnet 5.5 xhigh writes  -> one Opus 5.5 xhigh reviewer
+//   standard: Sol 6.1 xhigh writes     -> one Opus 5.5 xhigh reviewer
+//   complex:  Opus 5.5 xhigh writes    -> one Astra 6 xhigh reviewer
+// Every new launch, milestone or hardening, uses this file and names its
+// tier and that tier's writer:
+//   launch.sh --policy /Users/sidwood/code/casefilecrafter/.atomic/fleet/policy-presets.jsonc
+//             --tier simple   --writer anthropic/claude-sonnet-5-5:xhigh
+//             --tier standard --writer openai/gpt-6.1-sol:xhigh
+//             --tier complex  --writer anthropic/claude-opus-5-5:xhigh
+// Every harness runs on the default Atomic profile (Sid, 2026-10-12): pass no
+// --agent-dir.
+// A --policy passed with --checkout must be this absolute path.
+// goal-select: the three dials.
+//
+// A launch chooses a writer model and a review tier; the orchestrator comes
+// from defaults unless the launch sets it. The file is read again before
+// every turn, so an edit applies to running work. writer_fallbacks says
+// where a writer goes when its provider fails.
+//
+// Precedence, highest first: a top-level model key in this file or in a
+// project policy file (an override for every run that reads it), the launch
+// inputs, the chosen review tier, then defaults.
+{
+  "defaults": {
+    "orchestrator_model": "openai/gpt-6.1-sol:medium",
+    // Findings are re-verified on Astra, which never writes in any preset.
+    "reverify_model": "openai/gpt-6-astra:high",
+    "review_tier": "standard"
+  },
+  "review_tiers": {
+    // One reviewer in every tier, never on the writer's model line.
+    "simple": {
+      "panel": 1,
+      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
+      "max_turns": 3
+    },
+    "standard": {
+      "panel": 1,
+      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
+      "max_turns": 3
+    },
+    "complex": {
+      "panel": 1,
+      "reviewer_model": "openai/gpt-6-astra:xhigh",
+      "max_turns": 3
+    }
+  },
+  // When a writer's provider fails the run moves the writer to the next model
+  // listed for its model line; a model on the tier's panel, or re-verifying
+  // its findings, is passed over. With nothing left the run stops and can be
+  // resumed. An Opus writer (complex) falls to Sol; Sonnet and Sol writers
+  // have no fallback: Opus reviews them, and Astra re-verifies.
+  "writer_fallbacks": {
+    "anthropic/claude-opus-5-5": ["openai/gpt-6.1-sol:xhigh"]
+  }
+}

@@ -21,6 +21,8 @@ which writers suit the issue. A launch sets three dials:
 | `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` (while it is paused, `anthropic/claude-sonnet-5-5:xhigh`) |
 | `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 50 (while both are paused, `anthropic/claude-sonnet-5-5:xhigh`) |
 
+An owner may replace the weighted lists with one preset per tier. Casefile Crafter, 2026-10-12: simple `anthropic/claude-sonnet-5-5:xhigh` with one Opus 5.5 xhigh reviewer; standard `openai/gpt-6.1-sol:xhigh` with one Opus 5.5 xhigh reviewer; complex `anthropic/claude-opus-5-5:xhigh` with one Astra 6 xhigh reviewer (`templates/policy-presets.jsonc`: `panel: 1` in every tier). Put new presets in a project policy file and pass it to new launches; leave the shared policy alone until the runs that read it have ended, because a run takes its panel from the file at each turn. The same owner tied QA to the tier: a simple unit is not handed to the QA seat unless its train also carries standard or complex work (then QA takes the whole train); standard and complex units always are.
+
 Every tier caps review at three rounds, with one extra round granted only
 when round three leaves a P0 or P1 open. At the cap the run ends
 `handover`, not `needs_human`: it lands like an approved run and QA
