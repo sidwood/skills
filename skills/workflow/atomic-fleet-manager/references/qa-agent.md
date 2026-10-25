@@ -186,3 +186,12 @@ When the owner has a second Anthropic account with spare allowance, the QA seat 
 - Give the seat a queue file, not a single handover, when several units wait: one entry for each unit with its range, handover, report path and a status cell the seat keeps current; tell it to finish an entry before starting the next and not to stop between entries. Collect findings in one section of that file.
 - A model line does not review its own work, and QA is a review. Put every unit the seat's own model wrote on hold in the queue and ask the owner who reviews those (another model on the same account, or a seat on another provider).
 - Watch the pane for the seat stopping, not for each entry: one wake at the end.
+
+## QA that fixes its own findings
+
+An owner may ask the QA seat to fix what it finds instead of sending each finding to a fix-pass harness (Casefile Crafter, 2026-10-12: a Fable 5.1 xhigh seat on the owner's second account, fixing with Opus 5.5 xhigh subagents inside the same Claude Code session).
+
+- The seat still reviews first and collates every finding; then subagents on another model line fix them in the seat's own clone, one commit per finding, under the repo's commit rules (no attribution trailers, whatever the tool's default). The seat checks each fix with the break that found it, so no line judges its own work.
+- It does not fix what needs a ruling, what touches a file a running unit holds, or what is too large for a fix pass; those come back to the FM as before.
+- The queue status says so (`done: fixed in place (N; clone; commits; test-only | product)`), and the done-sync must not treat it as approval.
+- Landing, as one owner chose it: commits that touch only specs and test support land straight on `main` (fast-forward and push, no gate of their own) when `main` has not moved since the QA clone's base, so later work stacks on them at once and the next train's gate covers them; product-code fixes, and any fix once `main` has moved, ride the next train as an extra clone. A train stacked before a direct push is restarted. Either way the FM closes the tickets after landing with no second review and removes the clone.
