@@ -131,6 +131,23 @@ after that long), `--workspace ID`.
 - `blocked` on resume means the goal ledger holds a decision that closes
   the run. Read the ledger before choosing step 3.
 
+## A watcher's "stalled" report is true until you prove it false
+
+- A supervising chat at rest is not proof either way. While its workflow
+  runs in the background the pane lists the run in a BACKGROUND box, on a
+  line of the form `●  <run id>`. That line is the test of life.
+- When a watcher reports a run stalled (ledger `active`, pane at rest),
+  read the pane for that line and the run folder for its last write. No
+  box and no write in ten minutes means the run is dead: a review that
+  ended the work without closing the ledger looks exactly like this.
+- Have the watcher make the check itself, and always give it the pane. A
+  watcher that reads the ledger alone cannot see a run that stopped with
+  its ledger still `active`.
+- The run id also appears in a dead run's pane, in intercom lines. Match
+  the box line, not the id alone.
+- One fleet manager called a true report false, re-armed the watcher on
+  the ledger alone, and left an unfinished unit idle for two hours.
+
 ## "Command aborted" in a harness pane
 
 Atomic delivers a message to a busy stage by aborting the command that
