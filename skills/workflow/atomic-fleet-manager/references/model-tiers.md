@@ -18,8 +18,8 @@ which writers suit the issue. A launch sets three dials:
 | Label | Review panel | Writers and weights (2026-10-06, weights revised the same day) |
 | --- | --- | --- |
 | `tier-complex` | two seats on Astra, completion with evidence and risk; both approve (three seats until 2026-10-09: the third kept raising what the other two raised) | `openai/gpt-6.1-sol:xhigh` 70, `anthropic/claude-opus-5-5:high` 30 (Sol raised from high on 2026-10-09, after a milestone's trial showed cleaner units) |
-| `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` 60, `kimi-coding/k3:max` 40 |
-| `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 30, `kimi-coding/k3:max` 20 |
+| `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` (while it is paused, `anthropic/claude-sonnet-5-5:xhigh`) |
+| `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 50 (while both are paused, `anthropic/claude-sonnet-5-5:xhigh`) |
 
 Every tier caps review at three rounds, with one extra round granted only
 when round three leaves a P0 or P1 open. At the cap the run ends
@@ -56,9 +56,8 @@ issues whose criteria are checkable without interpretation.
 **One pair at a time.** The weights stand while no pair is open. As soon
 as one is, from `pair.sh open` until its issue is Done and its tab is
 closed, every other simple-tier issue goes to the label's Atomic writers
-in their own proportion: with `composer-grok` 50, `zai/glm-5.3:max` 30 and
-`kimi-coding/k3:max` 20, that is GLM 60 and Kimi 40. `pair.sh open`
-refuses a second pair.
+in their own proportion: with `composer-grok` 50 and `zai/glm-5.3:max` 50,
+that is GLM alone. `pair.sh open` refuses a second pair.
 
 ### A second account as one more writer for small units
 
@@ -86,8 +85,8 @@ A provider's usage window can close in the middle of a run. Ask the user
 once for a standing fallback sequence and keep it in the project's notes.
 One user's sequence, as an example:
 
-- `xai/grok-4.7:xhigh`, then `kimi-coding/k3:max`, then `zai/glm-5.3:max`,
-  then `anthropic/claude-sonnet-5-5:max`.
+- `xai/grok-4.7:xhigh`, then `zai/glm-5.3:max`, then
+  `anthropic/claude-sonnet-5-5:max`.
 - `anthropic/claude-opus-5-5:xhigh`, then `openai/gpt-6.1-sol:xhigh`.
 - No fallback for the provider with plenty of usage.
 
@@ -112,7 +111,7 @@ How to apply it:
   takes no fallback list for a single call. Left alone, a failed writer
   lands on the orchestrator's model, silently, and its task is reported
   completed. Casefile Crafter, 2026-10-09: a Grok writer out of credits
-  and a Kimi writer past its usage window both became Sol writers on a
+  and another writer past its usage window both became Sol writers on a
   panel where Sol reviews.
 - The workflow reads which model wrote from the agents' own transcripts
   after each orchestrator stage, and records it in the ledger
@@ -144,6 +143,24 @@ How to apply it:
   say what was asked and recorded: `taskRecords[].model` and `.thinking`.
 - Do not take the writer's model from a receipt written before this
   change: those named the model that was asked for.
+- Pause a provider whose window is known to be spent for days rather
+  than leave it in the chains: every writer that falls to it fails at
+  once and spends a step of its chain finding that out. Take it out of
+  every `writer_fallbacks` list and every writer choice (shared policy,
+  project policies, launch scripts, this skill's templates), keep the
+  old chains beside them as comments, and record the date it comes back
+  in the project's notes so it is restored on that date. Casefile
+  Crafter, 2026-10-12: GLM and Grok were both out for the week, so
+  writers went straight to Sonnet until Grok's window on 2026-10-16 and
+  GLM's on 2026-10-17. The policy is read before every turn, so the
+  pause applies to running work too.
+- Retire a provider whose compute is gone for good the same way, with
+  no comment left to restore it, and from the project's own rules,
+  scripts, unit names and tracker labels as well. A run keeps reading the
+  policy file it was launched with, by path: leave that file in place as
+  a transition copy whose top-level `writer_model` names a live writer
+  and whose fallbacks still catch the retired line, and delete it when
+  those runs end. New launches use a clean policy.
 - Test a fallback model once before relying on it:
   `atomic -ne -p "Say hello" --model <id>` from a scratch directory.
 - Run both of the workflow's test files in the preflight for any runtime
