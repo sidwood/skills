@@ -97,7 +97,12 @@ case "$status" in
 esac
 [ "$resumable" != false ] || fail "run $run is marked not resumable: $error"
 
-load="$(sysctl -n vm.loadavg | awk '{print $2}')"
+# macOS reports "{ 1m 5m 15m }" through sysctl; Linux keeps it in /proc.
+if [ -r /proc/loadavg ]; then
+  load="$(awk '{print $1}' /proc/loadavg)"
+else
+  load="$(sysctl -n vm.loadavg | awk '{print $2}')"
+fi
 awk -v l="$load" -v m="$max_load" 'BEGIN { exit !(l < m) }' ||
   fail "the 1-minute load average is $load (limit $max_load); a resume now would die the same way. Wait for it to fall."
 
