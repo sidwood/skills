@@ -20,14 +20,20 @@ originating specification.
 2. **Load the authorities.** Read repository instructions, applicable ADRs, and
    any engineering corpus or knowledge provider explicitly selected by the
    repository or user. A connected provider is not authoritative merely because
-   it is available.
+   it is available. Search the repository for every file that documents how
+   code should be written; when `CODING_STANDARDS.md` or `CONTRIBUTING.md`
+   exists, it must be on the list.
 3. **Find the specification.** Check linked issues and pull requests, user-supplied
    paths, commit messages, and matching documents under the repository's normal
    specification locations. If none exists, perform the standards review and
    report that the specification axis was unavailable.
-4. **Run two independent passes.** When delegation is available, run them in
-   parallel reviewers with separate context; otherwise perform one complete pass
-   at a time.
+4. **Run two independent passes.** When delegation is available, start both
+   reviewers together in the foreground, each with a fresh context window, and
+   build the report from the results they return; otherwise perform one
+   complete pass at a time. A reviewer sees only its brief: give both the
+   comparison command and commit list, give Standards the files from step 2
+   and the code-smell baseline path, and give Specification the specification
+   location or contents.
    - **Standards:** compare the diff with documented conventions and relevant
      surrounding code. Use [the code-smell baseline](references/code-smells.md)
      only as labeled heuristics. Repository guidance overrides it.
