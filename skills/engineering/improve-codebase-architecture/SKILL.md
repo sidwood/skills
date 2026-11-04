@@ -25,8 +25,9 @@ likely to change again; deepening dormant code rarely earns its cost.
 
 ### 2. Explore
 
-Use a subagent to inspect the scoped code when available. Look for experienced
-friction rather than applying a mechanical checklist:
+Use a subagent with a fresh context window to inspect the scoped code when
+available, and give it the scope from step 1 and the friction signs below.
+Look for experienced friction rather than applying a mechanical checklist:
 
 - Understanding one concept requires moving among many shallow modules.
 - Callers must know nearly as much as the implementation.
