@@ -10,14 +10,18 @@ and help the user explore the strongest candidate.
 
 ## Workflow
 
+Load each skill this workflow names through the Skill tool if your harness has
+one, otherwise by reading its `SKILL.md`.
+
 ### 1. Establish constraints and scope
 
-Load `codebase-design` and follow its engineering-authority discovery before
-reviewing the architecture. Guidance may resolve from a local corpus or from the
-knowledge provider selected by the repository or harness, such as Surface or
-Brain Cylinder. Do not choose or combine providers based only on availability.
-Read the applicable domain glossary and ADRs. These sources govern the review;
-the shared glossary must not rename or override precise repository terms.
+Load the `codebase-design` skill and follow its engineering-authority discovery
+before reviewing the architecture. Guidance may resolve from a local corpus or
+from the knowledge provider selected by the repository or harness, such as
+Surface or Brain Cylinder. Do not choose or combine providers based only on
+availability. Read the applicable domain glossary and ADRs. These sources govern
+the review; the shared glossary must not rename or override precise repository
+terms.
 
 If the user names a module, subsystem, or pain point, use that scope. Otherwise,
 inspect enough commit history to identify recently active areas. Favor code
@@ -62,12 +66,13 @@ explore.
 
 ### 4. Explore the selected candidate
 
-Invoke `grilling` to resolve constraints, dependencies, seam placement, the
-shape of the deepened module, and the tests that should survive.
+Load the `grilling` skill to resolve constraints, dependencies, seam placement,
+the shape of the deepened module, and the tests that should survive.
 
-Invoke `domain-modeling` whenever the discussion changes domain terminology or
-produces an ADR-worthy decision. Invoke `codebase-design` and follow
-`DESIGN-IT-TWICE.md` when alternative interfaces would expose useful tradeoffs.
+Load the `domain-modeling` skill whenever the discussion changes domain
+terminology or produces an ADR-worthy decision. Load the `codebase-design` skill
+and follow `DESIGN-IT-TWICE.md` when alternative interfaces would expose useful
+tradeoffs.
 
 Finish with a user-approved direction that complies with repository guidance;
 do not implement it unless the user asks.
