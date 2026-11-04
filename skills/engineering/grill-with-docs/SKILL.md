@@ -5,4 +5,4 @@ disable-model-invocation: true
 license: LICENSE
 ---
 
-Call the Skill tool twice, for "grilling" and "domain-modeling".
+Load the `grilling` and `domain-modeling` skills, each through the Skill tool if your harness has one, otherwise by reading its `SKILL.md`.
