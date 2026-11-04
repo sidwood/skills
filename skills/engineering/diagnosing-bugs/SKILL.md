@@ -40,8 +40,10 @@ commands, output, logs, traces, screenshots, and saved artifacts.
    evidence from inference.
 6. **Stop or fix according to scope.** For diagnosis-only work, report the cause
    without implementing. When a fix is authorized, turn the minimized case into
-   a failing regression test at a valid behavioral seam, apply the narrow fix,
-   and rerun both the regression test and original signal.
+   a regression test at a valid behavioral seam and watch it fail. If you forced
+   the red by mutating code or a fixture, `diff` against a pristine copy to
+   prove the mutation landed before trusting it. Then apply the narrow fix and
+   rerun both the regression test and original signal.
 7. **Clean up.** Remove temporary instrumentation and throwaway artifacts created
    for this diagnosis unless the user or repository convention requires
    preserving them. Report any missing test seam as an architectural limitation
