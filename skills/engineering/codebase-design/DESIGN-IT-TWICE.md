@@ -13,8 +13,8 @@ when it makes a constraint concrete.
 
 ### 2. Generate alternatives
 
-Use three or more parallel subagents when available. Give each the same facts
-and a different design constraint, such as:
+Use three or more parallel subagents when available, each with a fresh context
+window. Give each the same facts and a different design constraint, such as:
 
 - Minimize the interface to one to three entry points.
 - Maximize flexibility for demonstrated use cases.
