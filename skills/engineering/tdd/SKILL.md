@@ -24,7 +24,8 @@ or abstraction solely to make a mock convenient.
 
 Infer the seam from repository guidance, the specification, and existing tests.
 Ask the user only when competing seams would materially change architecture,
-coverage, or cost.
+coverage, or cost. When you ask, give each candidate seam a one-line note on
+what it catches and what it misses.
 
 ## Red-Green-Refactor
 
