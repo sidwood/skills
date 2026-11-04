@@ -43,7 +43,8 @@ candidate's dependencies using `codebase-design`'s
 ### 3. Present a visual report
 
 Write a self-contained HTML report to the operating system's temporary
-directory as `architecture-review-<timestamp>.html`, then open it for the user.
+directory (`$TMPDIR`, else `/tmp`; `%TEMP%` on Windows) as
+`architecture-review-<timestamp>.html`, then open it for the user.
 Follow [HTML-REPORT.md](HTML-REPORT.md).
 
 For each candidate include:
