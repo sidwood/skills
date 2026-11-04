@@ -9,10 +9,10 @@ Implement the work described by the user in the spec or tickets.
 
 If the user passes a ticket reference, fetch it from the issue tracker and state its title before starting. If the reference is ambiguous, ask.
 
-Call the Skill tool with "tdd" where possible, at pre-agreed seams.
+Use the `tdd` skill where possible, at pre-agreed seams. Load it through the Skill tool if your harness has one, otherwise by reading its `SKILL.md`.
 
 Run typechecking regularly, single test files regularly, and the full test suite once at the end.
 
-Once done, call the Skill tool with "code-review" to review the work.
+Once done, review the work with the `code-review` skill, loaded the same way.
 
 Commit your work to the current branch.
