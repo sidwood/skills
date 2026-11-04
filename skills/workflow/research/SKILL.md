@@ -13,7 +13,9 @@ Produce traceable findings grounded in the sources that own the facts.
 1. Define the question from the request and current context. Ask only when a
    missing choice would materially change the investigation.
 2. When background agents are available, delegate independent reading so other
-   work can continue. Otherwise, research inline.
+   work can continue. Start each with a fresh context window and pass it the
+   question, steps 3, 4 and 6, and the Rules, which it cannot otherwise see.
+   Otherwise, research inline.
 3. Prefer primary sources: official documentation, specifications, source code,
    standards, papers, and first-party APIs. Use secondary sources to discover
    primary material or to capture clearly attributed perspectives.
