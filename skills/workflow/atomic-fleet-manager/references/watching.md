@@ -117,8 +117,10 @@ after that long), `--workspace ID`.
   stage, not in the run's recorded status, so `--status` reports a paused
   run as `running` (owner alive) or `crashed` (owner gone). For a pause,
   trust the pane's `/workflow status`; resume it in its own session.
-- A stage that fails on infrastructure ("Managed PostgreSQL did not answer
-  a health check in time") leaves the run held this way: the panel says
+- A stage that fails on infrastructure (since Atomic 0.9.38 a typed
+  `StorageUnavailableError` or `StageRehydrationError` from the SQLite
+  workflow journal; before that, Postgres health checks) leaves the run
+  held this way: the panel says
   `1 paused` and a resume is refused as "already running in this
   session". `resume.sh` sees the refusal, sends `/workflow quit <run>`
   (which keeps the run resumable) and resumes again. A task view left

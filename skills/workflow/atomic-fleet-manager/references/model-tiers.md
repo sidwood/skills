@@ -57,10 +57,9 @@ tier label decides the tier; the writer comes from this table, not from a
   ([qa-agent.md](qa-agent.md)).
 - **Fable 5.2 as an Atomic writer** needs Atomic 0.9.76 or newer: earlier
   releases present themselves as a Claude Code too old for it, and the
-  request is refused. On 2026-11-10 goal-select's runtime tests failed on
-  0.9.76 (its SDK sessions changed, and it dropped the DBOS workflow
-  store), so the installed runtime stayed on 0.9.32. Until goal-select is
-  ported, launch complex `atomic` work with the Opus writer row.
+  request is refused. goal-select was ported to 0.9.76 on 2026-11-10 and
+  the dotfiles pin it there. Runs paused under 0.9.32 cannot be resumed;
+  launch them again.
 - Several rows for one tier and harness are alternatives: choose among them
   as [Choosing among a tier's presets](#choosing-among-a-tiers-presets)
   says.
@@ -172,12 +171,15 @@ How to apply it:
   writes. Unset, findings are re-verified on the launching session's
   model. A project policy with a `defaults` block of its own does not
   inherit the shared pin.
-- Reading a transcript yourself: a delegated writer's is at
-  `~/.atomic/agent/sessions/--<clone path with dashes>--/<session>/<task>/run-0/session.jsonl`,
-  and every assistant turn carries its model. An agent launched with
-  `context: "fork"` is different: its transcript is a file beside the
-  stage's own, named in its first line by `parentSession`, and it opens
-  with a copy of the parent's turns. Count only from its `session_info`
+- Reading a transcript yourself: since Atomic 0.9.76 every session is a
+  flat `<time>_<id>.jsonl` file in `~/.atomic/agent/sessions/` (JSONL
+  only because the dotfiles settings select it; Atomic's default is
+  SQLite, which goal-select cannot audit). A delegated writer's
+  transcript is named by `sessionFile` in its delivery record,
+  `subagent-artifacts/<launch>_<agent>_<n>_meta.json`, and every
+  assistant turn carries its model. An agent launched with
+  `context: "fork"` names its parent in its header's `parentSessionId`
+  and opens with a copy of the parent's turns. Count only from its `session_info`
   entry (`subagent-<agent>-<id>`). The stage's `subagent` tool results
   say what was asked and recorded: `taskRecords[].model` and `.thinking`.
 - Do not take the writer's model from a receipt written before this
@@ -203,8 +205,11 @@ How to apply it:
 - Test a fallback model once before relying on it:
   `atomic -ne -p "Say hello" --model <id>` from a scratch directory.
 - Run both of the workflow's test files in the preflight for any runtime
-  upgrade: two of them fail if the runtime stops passing the fallback
-  gate through to delegated agents.
+  upgrade: they fail if the runtime stops passing the fallback gate
+  through to delegated agents or changes the transcripts the audit reads.
+  Since Atomic 0.9.65 a subagent on a named model no longer falls back
+  onto the orchestrator's model by itself; the gate stays as a second
+  guard.
 
 ## Choosing among a tier's presets
 
