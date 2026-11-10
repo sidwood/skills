@@ -1,32 +1,30 @@
-// The fleet's model presets (Sid, 2026-10-12 12:10): "Going forward, let's use
-// the following model presets."
-//   simple:   Sonnet 5.5 xhigh writes  -> one Opus 5.5 xhigh reviewer
-//   standard: Sol 6.1 xhigh writes     -> one Opus 5.5 xhigh reviewer
-//   complex:  Opus 5.5 xhigh writes    -> one Astra 6 xhigh reviewer
-// Every new launch, milestone or hardening, uses this file and names its
-// tier and that tier's writer:
-//   launch.sh --policy /Users/sidwood/code/casefilecrafter/.atomic/fleet/policy-presets.jsonc
-//             --tier simple   --writer anthropic/claude-sonnet-5-5:xhigh
-//             --tier standard --writer openai/gpt-6.1-sol:xhigh
-//             --tier complex  --writer anthropic/claude-opus-5-5:xhigh
-// Every harness runs on the default Atomic profile (Sid, 2026-10-12): pass no
-// --agent-dir.
-// A --policy passed with --checkout must be this absolute path.
-// goal-select: the three dials.
+// The fleet's model presets (Sid, 2026-11-10), for every writer that one
+// Opus 5.5 xhigh reviewer checks. No OpenAI model: that subscription has
+// lapsed. references/model-tiers.md has the whole table, the Cursor pairs
+// and QA included.
+//   simple:   Sonnet 5.5 xhigh writes           -> one Opus 5.5 xhigh reviewer
+//   standard: GLM 5.3 max or Grok 4.7 xhigh     -> one Opus 5.5 xhigh reviewer
+//   complex:  Fable 5.2 xhigh writes            -> one Opus 5.5 xhigh reviewer
+// When Opus writes, use policy-presets-opus-writer.jsonc instead.
+// Copy this file into the project (.atomic/fleet/) and pass its absolute
+// path to every launch with the tier and that tier's writer:
+//   launch.sh --policy <abs path> --tier simple   --writer anthropic/claude-sonnet-5-5:xhigh
+//   launch.sh --policy <abs path> --tier standard --writer zai/glm-5.3:max
+//   launch.sh --policy <abs path> --tier standard --writer xai/grok-4.7:xhigh
+//   launch.sh --policy <abs path> --tier complex  --writer anthropic/claude-fable-5-2:xhigh
+// The atomic-work profile uses this file for its simple tier: add
+// --agent-dir ~/.atomic-work/agent.
+// A --policy passed with --checkout must be an absolute path.
 //
-// A launch chooses a writer model and a review tier; the orchestrator comes
-// from defaults unless the launch sets it. The file is read again before
-// every turn, so an edit applies to running work. writer_fallbacks says
-// where a writer goes when its provider fails.
-//
-// Precedence, highest first: a top-level model key in this file or in a
-// project policy file (an override for every run that reads it), the launch
-// inputs, the chosen review tier, then defaults.
+// Precedence, highest first: a top-level model key in this file (an
+// override for every run that reads it), the launch inputs, the chosen
+// review tier, then defaults. The file is read again before every turn.
 {
   "defaults": {
-    "orchestrator_model": "openai/gpt-6.1-sol:medium",
-    // Findings are re-verified on Astra, which never writes in any preset.
-    "reverify_model": "openai/gpt-6-astra:high",
+    "orchestrator_model": "anthropic/claude-sonnet-5-5:medium",
+    // Findings are re-verified on the reviewer's line, which never writes
+    // under this file.
+    "reverify_model": "anthropic/claude-opus-5-5:high",
     "review_tier": "standard"
   },
   "review_tiers": {
@@ -43,16 +41,20 @@
     },
     "complex": {
       "panel": 1,
-      "reviewer_model": "openai/gpt-6-astra:xhigh",
+      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
       "max_turns": 3
     }
   },
   // When a writer's provider fails the run moves the writer to the next model
   // listed for its model line; a model on the tier's panel, or re-verifying
   // its findings, is passed over. With nothing left the run stops and can be
-  // resumed. An Opus writer (complex) falls to Sol; Sonnet and Sol writers
-  // have no fallback: Opus reviews them, and Astra re-verifies.
+  // resumed. The GLM and Grok chains are Sid's order of 2026-11-06. Sid has
+  // named no fallback for an Anthropic writer; the empty keys stop a run
+  // inheriting a chain from the shared policy.
   "writer_fallbacks": {
-    "anthropic/claude-opus-5-5": ["openai/gpt-6.1-sol:xhigh"]
+    "zai/glm-5.3": ["xai/grok-4.7:xhigh", "anthropic/claude-sonnet-5-5:xhigh"],
+    "xai/grok-4.7": ["anthropic/claude-sonnet-5-5:xhigh"],
+    "anthropic/claude-sonnet-5-5": [],
+    "anthropic/claude-fable-5-2": []
   }
 }

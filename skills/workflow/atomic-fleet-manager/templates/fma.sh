@@ -14,7 +14,7 @@
 # run never finished within FMA_TIMEOUT seconds (default 3 h); the tab is
 # then left open to read.
 set -uo pipefail
-what="$(printf '%s' "$1" | tr -d "\"'\\\`\$")" prompt="$2" model="${3:-openai/gpt-6.1-sol:xhigh}" workspace="${4:-w15}"
+what="$(printf '%s' "$1" | tr -d "\"'\\\`\$")" prompt="$2" model="${3:-anthropic/claude-sonnet-5-5:xhigh}" workspace="${4:-w15}"
 seed=/Users/sidwood/code/casefilecrafter
 fleet="$seed/.atomic/fleet"
 here="$fleet/fm-scripts"

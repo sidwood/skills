@@ -1,6 +1,6 @@
 # The composer-grok pair
 
-A lighter harness beside Atomic, for simple-tier issues. It uses only the
+A lighter harness beside Atomic. It uses only the
 supported Cursor command-line agent (`agent`), so it spends Cursor
 subscription compute and nothing else. Trialed on 2026-10-04 on two
 issues; the QA agent approved both and judged the pairing trustworthy for
@@ -24,11 +24,22 @@ One tab named for the issue, split in two:
 
 ## When to use it
 
-- The issue is `tier-simple` and its acceptance criteria can be checked
-  without interpretation (a page state, a document, a config change).
-- Do not use it where a criterion needs judgment about intent; in its trial
-  it stated a command that did not exist and fixed a mistake in one file
-  while leaving it in another.
+A fleet manager that runs its units on the Cursor `agent` CLI uses the
+pair for every tier, with the models of that tier's `agent` row in
+[model-tiers.md](model-tiers.md) (Sid, 2026-11-10):
+
+| Tier | `--writer` | `--reviewer` | QA |
+| --- | --- | --- | --- |
+| simple | `composer-2.5` (the default) | `grok-4.7-xhigh` (the default) | none unless its train carries standard or complex work |
+| standard | `grok-4.7-xhigh` | `claude-opus-5-5-xhigh` | Fable 5.2 xhigh |
+| complex, and all UI/UX work | `claude-opus-5-5-xhigh` | `grok-4.7-xhigh` | Fable 5.2 xhigh |
+
+- With the Composer writer, keep to issues whose acceptance criteria can
+  be checked without interpretation (a page state, a document, a config
+  change). In its trial it stated a command that did not exist and fixed a
+  mistake in one file while leaving it in another.
+- `pair.sh` compares model lines by the name's first word, so two
+  `claude-*` models count as one line and are refused together.
 
 ## Open a pair
 

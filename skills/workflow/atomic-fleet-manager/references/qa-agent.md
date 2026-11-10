@@ -14,12 +14,18 @@ standing brief instead if it has not had one.
 ```bash
 herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd <seed> --label QA --no-focus
 herdr agent start qa --kind claude --pane <root pane id> -- \
-  --model claude-opus-5-5 --effort xhigh --name QA
+  --model claude-fable-5-2 --effort xhigh --name QA
 herdr agent prompt qa "<standing brief>" --wait --timeout 120000
 ```
 
 - Model and effort are the user's to change; these are the defaults
-  (Opus 5.5 at xhigh since 2026-10-06; Fable 5.1 at high before that).
+  (Fable 5.2 at xhigh since 2026-11-10; Opus 5.5 at xhigh from 2026-10-06;
+  Fable 5.1 at high before that). Claude Code older than 2.1.290 cannot
+  run Fable 5.2.
+- Units Fable wrote (the complex `atomic` row with a Fable writer in
+  [model-tiers.md](model-tiers.md)) go to a QA seat on Sonnet 5.5 at max,
+  never to the Fable seat. Simple units get no
+  QA unless their train also carries standard or complex work.
 - When the QA agent changes, ask the outgoing one to write a handover
   file first (`.atomic/fleet/qa-handover.md`: live stack, scripts,
   conventions, counts, open findings) and keep its probe scripts under

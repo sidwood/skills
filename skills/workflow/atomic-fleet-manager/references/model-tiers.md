@@ -10,29 +10,69 @@ which writers suit the issue. A launch sets three dials:
   re-verifies findings (`reverify_model` under `defaults`). Left unset,
   re-verification runs on the launching session's model, which can be the
   writer's own line.
-- `--writer`: the writer model with effort, chosen from the label's list
-  by its weights.
+- `--writer`: the writer model with effort, from the tier's presets below.
 - The orchestrator, from the policy's `defaults` unless `--orchestrator`
-  says otherwise. Sol at medium coordinates well and costs little.
+  says otherwise: Sonnet 5.5 at medium since 2026-11-10, when Sid's OpenAI
+  subscription lapsed and Sol went with it.
 
-| Label | Review panel | Writers and weights (2026-10-06, weights revised the same day) |
-| --- | --- | --- |
-| `tier-complex` | two seats on Astra, completion with evidence and risk; both approve (three seats until 2026-10-09: the third kept raising what the other two raised) | `openai/gpt-6.1-sol:xhigh` 70, `anthropic/claude-opus-5-5:high` 30 (Sol raised from high on 2026-10-09, after a milestone's trial showed cleaner units) |
-| `tier-standard` | completion-and-evidence on Sol, risk on Astra; both approve | `xai/grok-4.7:xhigh` (while it is paused, `anthropic/claude-sonnet-5-5:xhigh`) |
-| `tier-simple` | one reviewer on Sol; it alone approves | `composer-grok` 50, `zai/glm-5.3:max` 50 (while both are paused, `anthropic/claude-sonnet-5-5:xhigh`) |
+## The presets (Sid, 2026-11-10)
 
-An owner may replace the weighted lists with one preset per tier. Casefile Crafter, 2026-10-12: simple `anthropic/claude-sonnet-5-5:xhigh` with one Opus 5.5 xhigh reviewer; standard `openai/gpt-6.1-sol:xhigh` with one Opus 5.5 xhigh reviewer; complex `anthropic/claude-opus-5-5:xhigh` with one Astra 6 xhigh reviewer (`templates/policy-presets.jsonc`: `panel: 1` in every tier). Put new presets in a project policy file and pass it to new launches; leave the shared policy alone until the runs that read it have ended, because a run takes its panel from the file at each turn. The same owner tied QA to the tier: a simple unit is not handed to the QA seat unless its train also carries standard or complex work (then QA takes the whole train); standard and complex units always are.
+Each row is a writer, its one reviewer and the QA seat for that work. The
+tier label decides the tier; the writer comes from this table, not from a
+`Writers:` list in a label's description. No OpenAI model appears anywhere.
+
+| Tier | Harness | Writer | Reviewer (one) | QA |
+| --- | --- | --- | --- | --- |
+| simple | `agent` | Composer 2.5 | Grok 4.7 xhigh | none, see below |
+| simple | `atomic` | Sonnet 5.5 xhigh | Opus 5.5 xhigh | none, see below |
+| simple | `atomic-work` | Sonnet 5.5 xhigh | Opus 5.5 xhigh | none, see below |
+| standard | `agent` | Grok 4.7 xhigh | Opus 5.5 xhigh | Fable 5.2 xhigh |
+| standard | `atomic` | GLM 5.3 max | Opus 5.5 xhigh | Fable 5.2 xhigh |
+| standard | `atomic` | Grok 4.7 xhigh | Opus 5.5 xhigh | Fable 5.2 xhigh |
+| standard | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
+| standard | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
+| complex | `agent` | Opus 5.5 xhigh | Grok 4.7 xhigh | Fable 5.2 xhigh |
+| complex | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
+| complex | `atomic` | Fable 5.2 xhigh | Opus 5.5 xhigh | Sonnet 5.5 max |
+| complex | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
+
+- **Harnesses.** `atomic` is an Atomic harness on the default profile;
+  `atomic-work` is one on the second account (`--agent-dir
+  ~/.atomic-work/agent`). `agent` is the Cursor pair
+  ([composer-grok.md](composer-grok.md)), only for a fleet manager that
+  runs its units on the Cursor `agent` CLI; `scripts/pair.sh open
+  --writer <model> --reviewer <model>` takes that row's Cursor model names
+  (`composer-2.5`, `grok-4.7-xhigh`, `claude-opus-5-5-xhigh`).
+- **Policy files.** A tier holds one reviewer, so each reviewer has its
+  own file: [templates/policy-presets.jsonc](../templates/policy-presets.jsonc)
+  for every row Opus reviews (it matches the shared policy in dotfiles),
+  and [templates/policy-presets-opus-writer.jsonc](../templates/policy-presets-opus-writer.jsonc)
+  for every row Opus writes. Copy both into the project and pass the one
+  that matches the row.
+- **UI/UX work is complex** whatever its size.
+- **QA.** A simple unit is not handed to the QA seat unless its train also
+  carries standard or complex work; then QA takes the whole train. Standard
+  and complex units always go to QA. A unit Fable wrote goes to a Sonnet
+  5.5 max QA seat, since Fable 5.2 does not judge its own line
+  ([qa-agent.md](qa-agent.md)).
+- **Fable 5.2 as an Atomic writer** needs Atomic 0.9.76 or newer: earlier
+  releases present themselves as a Claude Code too old for it, and the
+  request is refused. On 2026-11-10 goal-select's runtime tests failed on
+  0.9.76 (its SDK sessions changed, and it dropped the DBOS workflow
+  store), so the installed runtime stayed on 0.9.32. Until goal-select is
+  ported, launch complex `atomic` work with the Opus writer row.
+- Several rows for one tier and harness are alternatives: choose among them
+  as [Choosing among a tier's presets](#choosing-among-a-tiers-presets)
+  says.
 
 Every tier caps review at three rounds, with one extra round granted only
 when round three leaves a P0 or P1 open. At the cap the run ends
 `handover`, not `needs_human`: it lands like an approved run and QA
 finishes it in one pass or escalates (see [landing-train.md](landing-train.md)).
 
-The label description in the tracker is the authority (it starts
-`Writers: <model> <weight>, ...`); this table records what it said when
-the scheme was set up. Changing a tier's writers is one edit to the label;
-changing a tier's reviewers is one edit to the shared policy. A running
-run takes such an edit from its next turn: it resolves a turn's models,
+Changing a tier's writers or reviewers is an edit to the presets above
+and to the policy files that carry them. A running run takes a policy
+edit from its next turn: it resolves a turn's models,
 the panel included, when the turn starts, so the review that ends a turn
 already under way still runs the old panel. Say that when you report the
 change.
@@ -41,25 +81,22 @@ change.
 
 1. A writer or policy file the user names for that issue or batch wins.
 2. A standing override for a time window comes next (see below).
-3. Otherwise read the issue's tier label and choose one of the writers its
-   description lists, as the next section describes.
+3. Otherwise read the issue's tier label and choose one of that tier's
+   presets for the harness, as the sections below describe.
 4. No tier label: classify the issue with the rubric, add the label, and
    tell the user which tier you chose and why in the launch report.
 5. A follow-up run after review findings keeps the issue's tier unless the
    findings show the writer was out of its depth; then move the issue up
    one tier and say so.
 
-`composer-grok` is not an Atomic writer: it is the separate Cursor pair
-in [composer-grok.md](composer-grok.md), opened with
-`scripts/pair.sh open`. Its shape is already the simple tier
-(one writer, one reviewer, three rounds). Use it only for simple-tier
-issues whose criteria are checkable without interpretation.
+The `agent` rows are not Atomic writers: they are the separate Cursor pair
+in [composer-grok.md](composer-grok.md), opened with `scripts/pair.sh
+open` and the row's `--writer` and `--reviewer`. Its shape matches the
+tiers (one writer, one reviewer, three rounds).
 
-**One pair at a time.** The weights stand while no pair is open. As soon
-as one is, from `pair.sh open` until its issue is Done and its tab is
-closed, every other simple-tier issue goes to the label's Atomic writers
-in their own proportion: with `composer-grok` 50 and `zai/glm-5.3:max` 50,
-that is GLM alone. `pair.sh open` refuses a second pair.
+**One pair at a time.** From `pair.sh open` until its issue is Done and
+its tab is closed, every other issue goes to the tier's Atomic rows.
+`pair.sh open` refuses a second pair.
 
 ### A second account as one more writer for small units
 
@@ -70,14 +107,14 @@ When the owner has a second provider account under its own Atomic profile, it ca
 
 ### A fix pass on a unit another lane wrote
 
-When QA sends findings back on a unit written and reviewed elsewhere (a cloud lane's writer and reviewer, say), the fix pass need not follow the small-unit chain: give it the strongest writer the project's compute allows and one reviewer of another model line at a lower effort. Casefile Crafter's rule (the owner, 2026-10-11): Sol 6.1 at xhigh writes, one Astra 6 reviewer at high checks, through a project policy file whose simple tier names that reviewer (`templates/policy-cloud-fix.jsonc`). Neither model has seen the work before, so the review is fresh, and the fix still lands on harness approval and the gate with no second QA review.
+When QA sends findings back on a unit written and reviewed elsewhere (a cloud lane's writer and reviewer, say), the fix pass need not follow the small-unit chain: give it the strongest writer the project's compute allows and one reviewer of another model line at a lower effort. Neither model should have seen the work before, so the review is fresh, and the fix still lands on harness approval and the gate with no second QA review. Casefile Crafter's rule of 2026-10-11 (Sol writes, Astra reviews, `templates/policy-cloud-fix.jsonc`) went with the OpenAI subscription: ask the owner for the pair before the next fix pass.
 
 ## The one rule no weighting overrides
 
 A model line never reviews its own work: the writer and every reviewer on
-the tier's panel must be different model lines (Sol writing for Astra
-reviewers is fine; Sol writing for the simple tier's Sol reviewer is not,
-and the launcher and the workflow both refuse it). When the user wants
+the tier's panel must be different model lines (Opus writing for a Sonnet
+reviewer is fine; Opus writing for an Opus reviewer is not, and the
+launcher and the workflow both refuse it). When the user wants
 one model used as much as possible, launch it as writer in some harnesses
 and as reviewer in others. Do not write a new preset to get around this.
 
@@ -85,12 +122,12 @@ and as reviewer in others. Do not write a new preset to get around this.
 
 A provider's usage window can close in the middle of a run. Ask the user
 once for a standing fallback sequence and keep it in the project's notes.
-One user's sequence, as an example:
+Sid's sequence (2026-11-06, carried into the 2026-11-10 presets):
 
-- `xai/grok-4.7:xhigh`, then `zai/glm-5.3:max`, then
-  `anthropic/claude-sonnet-5-5:max`.
-- `anthropic/claude-opus-5-5:xhigh`, then `openai/gpt-6.1-sol:xhigh`.
-- No fallback for the provider with plenty of usage.
+- `zai/glm-5.3:max`, then `xai/grok-4.7:xhigh`, then
+  `anthropic/claude-sonnet-5-5:xhigh`.
+- `xai/grok-4.7:xhigh`, then `anthropic/claude-sonnet-5-5:xhigh`.
+- No fallback named for an Anthropic writer.
 
 How to apply it:
 
@@ -102,8 +139,8 @@ How to apply it:
   the turn's review panel and does not re-verify it. With none left the
   run ends failed and resumable, and names what it refused and why.
 - So a step that is legal on one tier is refused on another without any
-  per-launch care: Opus falling back to Sol runs where every reviewer is
-  Astra and stops where a reviewer is Sol.
+  per-launch care: Grok falling back to Sonnet runs where Opus reviews and
+  stops where Sonnet reviews.
 - Do not put "continue with `<next model>`" in an objective any more, and
   do not steer a run to another writer by message: an orchestrator told
   to jump to a reviewer's line closes its own run for a person.
@@ -169,23 +206,20 @@ How to apply it:
   upgrade: two of them fail if the runtime stops passing the fallback
   gate through to delegated agents.
 
-## Choosing among a tier's policies
+## Choosing among a tier's presets
 
-A weight is the share of that tier's launches the preset should get over
-time. It is a target to steer by, not a dice roll: you decide each launch
-and keep the running mix near the weights.
+When the user gives a tier's presets weights, a weight is the share of
+that tier's launches the preset should get over time. It is a target to
+steer by, not a dice roll: you decide each launch and keep the running mix
+near the weights. With no weights given, keep the mix even.
 
 Decide in this order:
 
 1. **Fit.** Some issues call for one preset whatever the mix:
-   - `opus-fable` is for the hardest complex issues only: several
-     complex triggers at once (for example a lifecycle change with a
-     migration and concurrency), a design left open by the issue, or a
-     complex issue that has already bounced twice on `sol-astra`.
-   - In the standard tier, prefer the preset with the stronger reviewers
-     when the risk is in judgment (accessibility behavior, user-facing
-     copy, anything security-adjacent), and the other when the risk is in
-     volume (wide but mechanical changes, journey tests).
+   - In the standard tier, prefer the Opus writer when the risk is in
+     judgment (accessibility behavior, user-facing copy, anything
+     security-adjacent), and GLM or Grok when the risk is in volume (wide
+     but mechanical changes, journey tests).
 2. **Evidence.** Keep a tally per preset of reviewer rounds, QA findings
    and elapsed time. Shift launches toward the preset that is landing
    clean, and tell the user when the evidence disagrees with the weights.
@@ -195,10 +229,10 @@ Decide in this order:
    furthest below its weight in the tally.
 
 State the preset and the reason for each issue in the launch report, for
-example "TUS-88: `grok-astra` (wide, mechanical; Grok is under its share)".
+example "TUS-88: Grok writes, Opus reviews (wide, mechanical; Grok is under its share)".
 
 Compute budgets move, so expect standing overrides: the user may say "use
-`opus-astra` for complex work until 17:00 today". Apply an override for
+the Opus writer for complex work until 17:00 today". Apply an override for
 exactly the window given, then return to the label's policies without
 being asked. Do not edit a label description for a temporary override; edit
 it when the user changes the standing mix.
@@ -228,6 +262,7 @@ Judge the hardest part of the issue, not its size in points.
   pattern later issues will copy
 - a new interaction model (keyboard navigation of a graph, focus rules,
   live regions) or computed layout
+- any UI/UX work, whatever its size (Sid, 2026-11-10)
 - the issue states an outcome and leaves the design open
 
 **Simple** when all of these hold:

@@ -32,12 +32,14 @@ outside manager.
 4. **Start the QA agent** if there is none, and give it the standing brief:
    [references/qa-agent.md](references/qa-agent.md).
 5. **Agree the first batch.** Propose unblocked issues from the tracker,
-   each with its review tier and a writer chosen from its `Model tier` label
+   each with its review tier, from its `Model tier` label, and a writer
+   from that tier's presets
    ([references/model-tiers.md](references/model-tiers.md)); start what
    the user names or approves.
 6. **Launch**, one harness per issue, trial first:
-   [references/launching.md](references/launching.md). Simple-tier issues
-   may use the lighter Cursor pair, which you drive one prompt at a time:
+   [references/launching.md](references/launching.md). A fleet manager on
+   the Cursor `agent` CLI uses the lighter Cursor pair, which you drive one
+   prompt at a time:
    [references/composer-grok.md](references/composer-grok.md).
    Several issues that share files, or a backlog of small defects, can
    run as one unit in one harness:
@@ -98,7 +100,7 @@ repository; without one, ask before the first train.
 - Tab label equals the issue identifier, one harness per tab; `FM` and `QA`
   are the two fixed tabs.
 - Policy per issue: the one the user named, otherwise your choice among
-  the weighted writers its tier label lists, with the reason reported.
+  its tier's presets, with the reason reported.
 - A pane that leaves `working` has not necessarily finished: a harness can
   pause itself, for example on an unmet blocker. Read the pane and report
   what it says.
@@ -131,7 +133,7 @@ repository; without one, ask before the first train.
      Finish first.
   4. One issue per code area at a time.
   5. At most one Cursor pair at a time: a pair needs you at every handoff.
-     While one is open, simple-tier work goes to the Atomic writers.
+     While one is open, other work goes to the tier's Atomic presets.
   6. A follow-up run on a started issue needs no free slot.
 
   Three is what the landing gate can carry: it runs one at a time at

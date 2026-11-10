@@ -1,0 +1,48 @@
+// The fleet's model presets (Sid, 2026-11-10), for an Opus 5.5 xhigh writer
+// that one Sonnet 5.5 max reviewer checks. No OpenAI model: that
+// subscription has lapsed. references/model-tiers.md has the whole table, the
+// Cursor pairs and QA included.
+//   standard: Opus 5.5 xhigh writes -> one Sonnet 5.5 max reviewer
+//   complex:  Opus 5.5 xhigh writes -> one Sonnet 5.5 max reviewer
+// Every other writer uses policy-presets.jsonc, where Opus reviews.
+// Copy this file into the project (.atomic/fleet/) and pass its absolute
+// path with the tier and the Opus writer:
+//   launch.sh --policy <abs path> --tier standard --writer anthropic/claude-opus-5-5:xhigh
+//   launch.sh --policy <abs path> --tier complex  --writer anthropic/claude-opus-5-5:xhigh
+// The atomic-work profile uses this file for standard and complex work: add
+// --agent-dir ~/.atomic-work/agent.
+// The simple tier is here only so that a follow-up in an Opus unit's clone,
+// which the launcher gives the simple tier, still has a reviewer off the
+// writer's line.
+// A --policy passed with --checkout must be an absolute path.
+{
+  "defaults": {
+    "orchestrator_model": "anthropic/claude-sonnet-5-5:medium",
+    // Findings are re-verified on the reviewer's line, which never writes
+    // under this file.
+    "reverify_model": "anthropic/claude-sonnet-5-5:high",
+    "review_tier": "standard"
+  },
+  "review_tiers": {
+    "simple": {
+      "panel": 1,
+      "reviewer_model": "anthropic/claude-sonnet-5-5:max",
+      "max_turns": 3
+    },
+    "standard": {
+      "panel": 1,
+      "reviewer_model": "anthropic/claude-sonnet-5-5:max",
+      "max_turns": 3
+    },
+    "complex": {
+      "panel": 1,
+      "reviewer_model": "anthropic/claude-sonnet-5-5:max",
+      "max_turns": 3
+    }
+  },
+  // Sid has named no fallback for an Opus writer. The empty key stops a run
+  // inheriting one from the shared policy.
+  "writer_fallbacks": {
+    "anthropic/claude-opus-5-5": []
+  }
+}

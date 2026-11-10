@@ -9,7 +9,7 @@ Facts checked against Atomic's bundled docs
 ## Launching from the TUI
 
 ```text
-/workflow goal-select tracker=linear tracker_issue=TUS-150 model_policy_path=/abs/path/opus-astra.json
+/workflow goal-select tracker=linear tracker_issue=TUS-150 model_policy_path=/abs/path/policy-presets-opus-writer.jsonc
 ```
 
 - Inputs are bare `key=value` tokens. A value is parsed as JSON when it can
@@ -34,8 +34,9 @@ Facts checked against Atomic's bundled docs
 | `create_pr` | `false` | Opt in explicitly; prompt text alone does not |
 | `resolve_only` | `false` | Resolve models and preview the clone path, then stop; fetches no issue |
 
-Presets live in `~/.config/atomic/goal-select-models/`, named
-`<writer>-<reviewer>.json` (for example `opus-astra.json`, `glm-astra.json`).
+The shared default is `~/.config/atomic/goal-select.jsonc`. Other presets
+are policy files copied into the project from this skill's `templates/`
+(`policy-presets.jsonc`, `policy-presets-opus-writer.jsonc`).
 
 ## Reading a run
 
