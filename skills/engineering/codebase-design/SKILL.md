@@ -1,6 +1,7 @@
 ---
 name: codebase-design
 description: Use when designing or improving a module interface, finding deepening opportunities, deciding where a seam belongs, or making code more testable or easier for agents to navigate.
+license: LICENSE
 ---
 
 # Codebase Design

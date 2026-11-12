@@ -1,6 +1,7 @@
 ---
 name: improve-codebase-architecture
 description: Use when reviewing a codebase for architectural friction, deepening opportunities, tightly coupled modules, poor test seams, or changes that would improve locality and agent navigation.
+license: LICENSE
 ---
 
 # Improve Codebase Architecture
