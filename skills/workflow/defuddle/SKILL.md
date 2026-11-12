@@ -1,6 +1,6 @@
 ---
 name: defuddle
-description: Extract clean Markdown from HTML pages with Defuddle CLI.
+description: Use when the user gives a URL to read, summarize, or analyze, or wants online documentation, an article, a blog post, or any other standard web page. Use instead of WebFetch for HTML pages. Not for URLs ending in .md, which are already Markdown; fetch those directly.
 license: LICENSE
 ---
 
