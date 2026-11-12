@@ -1172,7 +1172,7 @@ class RecipeCatalogTests(unittest.TestCase):
         drift = fleet.sync_recipe_catalog(config)
 
         self.assertIn("missing recipe grok-xhigh-cursor", drift)
-        self.assertEqual(config["recipeCatalogVersion"], 6)
+        self.assertEqual(config["recipeCatalogVersion"], 7)
         self.assertEqual(
             config["recipes"]["grok-xhigh"]["fallbacks"],
             ["grok-xhigh-cursor", "glm-53"],
@@ -1188,7 +1188,7 @@ class RecipeCatalogTests(unittest.TestCase):
     def test_catalog_contains_fable_51_max_recipe(self) -> None:
         catalog = fleet.load_recipe_catalog()
 
-        self.assertEqual(catalog["version"], 6)
+        self.assertEqual(catalog["version"], 7)
         self.assertEqual(
             catalog["usagePools"]["anthropic-fable"], {"state": "available"}
         )

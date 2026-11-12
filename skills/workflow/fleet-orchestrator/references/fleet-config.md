@@ -43,7 +43,7 @@ receipts and the exact operator-authorized legacy continuation schema.
   // `fleet recipes sync` installs these sections from the skill's canonical
   // assets/recipe-catalog.json. Do not hand-copy or trim the catalog. Disable
   // an unused recipe with `enabled: false`; keep its definition present.
-  "recipeCatalogVersion": 6,
+  "recipeCatalogVersion": 7,
   "usagePools": { "...canonical pools...": { "state": "available | spent" } },
   "recipes": { "...canonical recipes...": { "enabled": true } },
 

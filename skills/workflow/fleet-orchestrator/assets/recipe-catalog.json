@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "usagePools": {
     "cursor-composer": { "state": "available" },
     "cursor-grok": { "state": "available" },
@@ -73,7 +73,7 @@
       "usagePool": "glm",
       "fallbacks": ["grok-high", "grok-high-cursor"],
       "envPreStep": "set -a; source \"$HOME/.claude-glm/lane.env\"; set +a",
-      "args": ["--dangerously-skip-permissions", "--model", "glm-5.3"]
+      "args": ["--dangerously-skip-permissions", "--model", "glm-5.3[1m]"]
     },
     "glm-53-opencode-go": {
       "kind": "opencode",
