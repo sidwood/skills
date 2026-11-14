@@ -77,6 +77,17 @@ about the state of the fleet.
 - Pair the ask with ⚠️ only when the thread is genuinely stopped; a decision
   you can proceed without is a plain bullet.
 
+## Board freshness
+
+- When an HTML board is in use, update its progress source and regenerate the
+  view at implementation, gate, review, and landing checkpoints before reporting.
+  This also applies to solo work continuing after a fleet has stopped.
+- Show when the progress facts were checked; a browser reload is not fresh
+  evidence. Keep local work, verification failures, and landed work distinct.
+- A zero-model watcher may rebuild HTML when source files change. Keep that
+  projection separate from fleet dispatch authority, and retain the last good
+  board if an input is temporarily invalid.
+
 ## Mechanics
 
 - **en-GB spelling** in operator-facing reports and commit messages, unless the
