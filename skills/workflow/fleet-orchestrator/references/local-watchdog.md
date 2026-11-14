@@ -27,6 +27,39 @@ and legitimate handoffs still consume their normal model usage.
    not proof the model has processed it; inspect the queued message or receipt
    at the next task turn. Never use a different task as an implicit test target.
 
+## Delivering to an existing Hermes conversation
+
+When the orchestrator is Hermes rather than a Codex task, use a project-local
+adapter implementing the watchdog's `queue --thread ... --message ...`
+interface. Printing `WAKE` and returning success is not delivery.
+
+- Preserve the stored Hermes session ID literally. If the caller requires a
+  UUID, keep a separate correlation UUID and explicit non-secret mapping; do
+  not substitute that UUID for the stored session ID.
+- Discover the owner through the active-session registry, then discover its
+  loopback listener by PID. Authenticate using the installed dashboard
+  bootstrap and match `session.active_list` by exact `session_key`. Rediscover
+  PID, process start, port, and runtime ID rather than caching them. Registry
+  discovery may prune stale leases even during a no-prompt probe.
+- Use the supported gateway `prompt.submit` with the discovered runtime ID
+  and explicit `queued: true`; check current protocol docs and installed
+  source. Local no-agent cron delivery is not an existing-conversation wakeup,
+  and the canonical Bot Chat mailbox must not be repurposed for another chat.
+- Keep authentication material in memory, redact errors, and never persist it
+  in receipts or print authenticated URLs. Require an exact target and fail
+  closed on ambiguous discovery.
+- Persist intent before submission. Treat queued/streaming replies as pending,
+  not model acknowledgement. Return a retryable nonzero code until the actual
+  receiving turn acknowledges the delivery ID. Never set `HERMES_SESSION_ID`
+  in the sender to manufacture a receiving-session acknowledgement.
+- Test a uniquely labelled canary, end the sending turn, and verify its arrival
+  and acknowledgement in a subsequent turn before arming the scheduler.
+  Pending RPC queues are process-local; retain retry receipts across restarts
+  and document possible duplicates instead of claiming exactly-once delivery.
+- Inspect pre-adapter incident history before activation. Archive false-success
+  evidence and reconcile affected incidents explicitly; an old `sent` flag is
+  not proof the new adapter delivered it.
+
 ## Schedule local code, not a model
 
 On macOS, install one user LaunchAgent with `StartInterval` set to 30 seconds,
