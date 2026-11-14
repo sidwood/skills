@@ -14,8 +14,8 @@ has not had one.
 
 ```bash
 . scripts/fleet-hc.sh
-qa="$(fleet_open QA qa <seed> -- \
-  claude --model claude-fable-5-2 --effort medium --name QA "<standing brief>")"
+qa="$(fleet_open QA qa <seed> -- env CLAUDE_CONFIG_DIR="$HOME/.claude-work" \
+  claude --dangerously-skip-permissions --model claude-fable-5-2 --effort medium --name QA "<standing brief>")"
 fleet_name_tab "$qa" QA
 ```
 
@@ -25,6 +25,18 @@ the terminal's address. The brief goes in the run as the first message,
 since a send to a booting agent can be dropped. `fleet_name_tab` names its
 GUI tab `QA`. Later prompts go with `hc send "$qa" "..."`.
 
+- Account (Sid, 2026-11-12): every QA seat runs on the work Claude
+  subscription, whatever its model or effort, to spare the personal
+  account's weekly window. On the Macs and the Framework desktop
+  `claude-work` is a shell alias, which scripts and `hc run` cannot load,
+  so use its expanded form as above: `env
+  CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude
+  --dangerously-skip-permissions`. On the `agents` VM it is a script on
+  PATH (since 2026-11-13), so `hc run --on agents --bg -- claude-work
+  --model <model> --effort <level>` works. Run QA only where that config
+  is signed in: the Macs, the Framework desktop and `agents`.
+  Move a seat that is still on another account as soon as it is idle;
+  see the next section.
 - Model and effort are the user's to change; these are the defaults
   (since 2026-11-12, on Anthropic's recommendation: Fable 5.2 at medium,
   Opus 5.5 at high; before that Fable 5.2 at xhigh from 2026-11-10, Opus
@@ -197,7 +209,8 @@ staging clone while tidying before a handover.
 
 When the owner has a second Anthropic account with spare allowance, the QA seat can run as Claude Code under it, so reviews cost nothing from the account the fleet manager runs on.
 
-- Use the owner's own alias for that account (for example `claude-work`, which sets `CLAUDE_CONFIG_DIR` and the permission mode). Run it in the QA terminal with `fleet_open QA qa <seed> -- <alias> --model <model> --effort <level>`. Starting plain `claude` uses the first account.
+- Open it on that account's config directly: `fleet_open QA qa <seed> -- env CLAUDE_CONFIG_DIR=<that config> claude --dangerously-skip-permissions --model <model> --effort <level> "<standing brief>"`. Do not type an alias into the terminal with `hc send`: `hc send` wraps its text in an `<hc from=...>` note for any terminal that has ever run an agent, so a shell receives a line it cannot parse and an agent receives a slash command as chat.
+- To move a running seat without losing its context: wait until it is idle, quit it with `hc keys <t> ctrl+d ctrl+d`, copy its session (`projects/<project>/<session id>.jsonl`, the folder of the same name, and `file-history/<session id>`) from the old config to the new one without overwriting anything, then start it there with `--resume <session id>`. To type into a terminal that has run an agent, put the command in a short script and type its path with `hc keys <t> <character>... enter`. Read the banner afterwards: it names the model, the effort and the plan (on the work subscription, "Claude Team").
 - A terminal whose shell is older than the alias answers "command not found" with the whole line: source the aliases file in that terminal first.
 - The first start in a folder asks whether to trust it, with "No" selected. Read the banner afterwards: it names the model, the effort and the plan.
 - Give the seat a queue file, not a single handover, when several units wait: one entry for each unit with its range, handover, report path and a status cell the seat keeps current; tell it to finish an entry before starting the next and not to stop between entries. Collect findings in one section of that file.
