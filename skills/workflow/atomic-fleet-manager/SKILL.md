@@ -183,5 +183,8 @@ repository; without one, ask before the first train.
   full-issue responses do not fill your context. Give it the exact list,
   the one risk to prove first, and what to report; run helpers on the model
   the user has set for helpers, and tell each helper the same.
+  `templates/fma.sh` runs one in an hc terminal named `FMA-<n>` (role
+  `helper`) the user can watch; set `FMA_SEED` and `FMA_PROJECT` when you
+  copy it into a project.
 - State what was not verified: suites not run, screens not re-read, a
   reviewer's verdict not yet in.
