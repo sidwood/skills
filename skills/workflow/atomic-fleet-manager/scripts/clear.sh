@@ -16,6 +16,11 @@ Usage: clear.sh --issue ID --execution-order TEXT --in-progress N --finishing N
                            issue's blocked-by relations AND every issue its
                            text says to start after. Omit only when there
                            are none.
+  --related ID             An issue the execution-order text names that is
+                           not a blocker ("related to X", "can ride in a
+                           unit with X"): named, not waited for. Repeat for
+                           each. Never use it for an issue the text says to
+                           start after.
   --execution-order TEXT   The sentence from the issue that says when it may
                            start, copied from the tracker, or "none" if the
                            issue has no such section
@@ -51,10 +56,12 @@ issue="" order="" area="" seed="$PWD"
 in_progress="" finishing="" clash="" web="" web_in_progress="" exception=""
 wip_limit=3 web_limit=2 finishing_limit=2
 blockers=()
+related=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --issue) issue="$2"; shift 2 ;;
     --blocker) blockers+=("$2"); shift 2 ;;
+    --related) related+=("$2"); shift 2 ;;
     --execution-order) order="$2"; shift 2 ;;
     --area) area="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
@@ -91,7 +98,8 @@ for b in "${blockers[@]+"${blockers[@]}"}"; do
 done
 
 # Every issue the execution-order sentence names must have been given as a
-# blocker, so the prose and the relations are checked against each other.
+# blocker, or as related when the text names it without making it wait, so
+# the prose and the relations are checked against each other.
 prefix="${issue%%-*}"
 for named in $(printf '%s' "$order" | grep -oE "$prefix-[0-9]+" | sort -u); do
   [ "$named" = "$issue" ] && continue
@@ -99,7 +107,10 @@ for named in $(printf '%s' "$order" | grep -oE "$prefix-[0-9]+" | sort -u); do
   for b in "${blockers[@]+"${blockers[@]}"}"; do
     [ "${b%%=*}" = "$named" ] && found=1
   done
-  [ -n "$found" ] || fail "the execution-order text names $named but no --blocker gives its state."
+  for r in "${related[@]+"${related[@]}"}"; do
+    [ "$r" = "$named" ] && found=1
+  done
+  [ -n "$found" ] || fail "the execution-order text names $named but no --blocker gives its state (or --related, if the text does not make it wait)."
 done
 
 if [ "${#open[@]}" -gt 0 ]; then
@@ -132,6 +143,7 @@ mkdir -p "$dir"
   echo
   echo "- Checked: $(date '+%Y-%m-%d %H:%M')"
   echo "- Blockers: ${blockers[*]:-none}"
+  [ "${#related[@]}" -eq 0 ] || echo "- Related, not waited for: ${related[*]}"
   echo "- Execution order: $order"
   echo "- Area: ${area:-not stated}"
   echo "- In progress: $in_progress (limit $wip_limit), finishing: $finishing, web: ${web_in_progress:-not web}, area clash: $clash"
