@@ -55,5 +55,6 @@ originating specification.
 - Distinguish documented violations from judgment calls.
 - Do not modify files, post comments, approve reviews, or file issues unless the
   user separately asks for those actions.
+- For a corrected frozen-tree review, inspect both base-to-tree and failed-tree-to-tree diffs, match correction receipts to actual blobs, and rerun the original reproductions without overwriting their earlier evidence.
 - An empty review is valid when the evidence supports it; never manufacture a
   finding to appear thorough.
