@@ -51,7 +51,9 @@ outside manager.
    run as one unit in one harness:
    [references/units.md](references/units.md).
    A unit can also be written by remote agents on a branch and landed
-   here: [references/cloud-lane.md](references/cloud-lane.md).
+   here: [references/cloud-lane.md](references/cloud-lane.md). Running
+   units on another machine:
+   [references/remote-machines.md](references/remote-machines.md).
 7. **Run the loop** below until the user stands the fleet down.
 
 ## The loop

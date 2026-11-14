@@ -35,7 +35,8 @@
    without starting any work. `--base-branch NAME` passes `base_branch` to
    the workflow. Through `hc exec`, where there is no
    `HC_TERMINAL_ID`, pass `--space <space id>` (`--workspace` is the old
-   name).
+   name). A unit on another machine:
+   [remote-machines.md](remote-machines.md).
 5. **Verify each launch.** A harness counts as running when the script
    printed a `run_id`, the terminal's state is `atomic working`, and the
    clone `<seed>.goal-<issue>-<hash>` exists beside the seed about a minute
