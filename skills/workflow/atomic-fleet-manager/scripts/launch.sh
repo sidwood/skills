@@ -5,13 +5,14 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: launch.sh --issue ID --tier TIER --writer MODEL [options]
+Usage: launch.sh --issue ID --tier TIER [--writer MODEL] [options]
        launch.sh --issue ID --policy PATH [options]
 
   --issue ID           Tracker issue identifier, also the tab label (TUS-150)
   --tier TIER          Review tier from the issue's label: simple, standard
                        or complex (the shared policy defines each)
-  --writer MODEL       Writer model with effort (xai/grok-4.7:xhigh)
+  --writer MODEL       Writer model with effort (default: the shared policy's
+                       defaults.writer_model)
   --orchestrator MODEL Orchestrator model (default: the shared policy's)
   --policy PATH        A policy file instead of the shared one; its
                        top-level keys override the tier for this run
@@ -71,7 +72,6 @@ fail() { echo "Error: $1" >&2; exit 1; }
 if [ -z "$tier" ] && [ -z "$policy" ] && [ -n "$checkout" ] && [ "$checkout" != auto ]; then tier="simple"; fi
 [ -n "$policy" ] || [ -n "$tier" ] || fail "--tier is required (or --policy for a policy file)."
 case "$tier" in ""|simple|standard|complex) ;; *) fail "--tier must be simple, standard or complex, got '$tier'." ;; esac
-[ -n "$policy" ] || [ -n "$writer" ] || fail "--writer is required with --tier."
 [ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
 command -v atomic >/dev/null || fail "atomic is not on PATH."
 # A second account lives in its own agent directory. An API key in the
@@ -95,6 +95,20 @@ esac
 # a --checkout clone has no .atomic/fleet: it then falls back to the shared
 # policy's tiers (M5-A4, 2026-10-15). Pass it absolute.
 policy_path="$(cd "$(dirname "$policy_path")" && pwd)/$(basename "$policy_path")"
+# With --tier and no --writer, the writer is the shared policy's
+# defaults.writer_model, passed explicitly so the run records it.
+if [ -z "$writer" ] && [ -z "$policy" ]; then
+  writer="$(python3 - "$policy_path" <<'PY'
+import json, re, sys
+try:
+    policy = json.loads(re.sub(r"(?m)^\s*//.*$", "", open(sys.argv[1]).read()))
+except (OSError, ValueError):
+    policy = {}
+print(policy.get("defaults", {}).get("writer_model") or "")
+PY
+)"
+  [ -n "$writer" ] || fail "--writer is required with --tier when the shared policy has no defaults.writer_model."
+fi
 
 # Prime directive: a model line never reviews its own work.
 same_line="$(python3 - "$policy_path" "$tier" "$writer" <<'PY'
