@@ -31,8 +31,8 @@ pair for every tier, with the models of that tier's `agent` row in
 | Tier | `--writer` | `--reviewer` | QA |
 | --- | --- | --- | --- |
 | simple | `composer-2.5` (the default) | `grok-4.7-xhigh` (the default) | none unless its train carries standard or complex work |
-| standard | `grok-4.7-xhigh` | `claude-opus-5-5-xhigh` | Fable 5.2 xhigh |
-| complex, and all UI/UX work | `claude-opus-5-5-xhigh` | `grok-4.7-xhigh` | Fable 5.2 xhigh |
+| standard | `grok-4.7-xhigh` | `claude-opus-5-5-high` | Fable 5.2 medium |
+| complex, and all UI/UX work | `claude-opus-5-5-xhigh` | `grok-4.7-xhigh` | Fable 5.2 medium |
 
 - With the Composer writer, keep to issues whose acceptance criteria can
   be checked without interpretation (a page state, a document, a config

@@ -24,17 +24,17 @@ tier label decides the tier; the writer comes from this table, not from a
 | Tier | Harness | Writer | Reviewer (one) | QA |
 | --- | --- | --- | --- | --- |
 | simple | `agent` | Composer 2.5 | Grok 4.7 xhigh | none, see below |
-| simple | `atomic` | Sonnet 5.5 xhigh | Opus 5.5 xhigh | none, see below |
-| simple | `atomic-work` | Sonnet 5.5 xhigh | Opus 5.5 xhigh | none, see below |
-| standard | `agent` | Grok 4.7 xhigh | Opus 5.5 xhigh | Fable 5.2 xhigh |
-| standard | `atomic` | GLM 5.3 max | Opus 5.5 xhigh | Fable 5.2 xhigh |
-| standard | `atomic` | Grok 4.7 xhigh | Opus 5.5 xhigh | Fable 5.2 xhigh |
-| standard | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
-| standard | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
-| complex | `agent` | Opus 5.5 xhigh | Grok 4.7 xhigh | Fable 5.2 xhigh |
-| complex | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
-| complex | `atomic` | Fable 5.2 xhigh | Opus 5.5 xhigh | Sonnet 5.5 max |
-| complex | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 xhigh |
+| simple | `atomic` | Sonnet 5.5 xhigh | Opus 5.5 high | none, see below |
+| simple | `atomic-work` | Sonnet 5.5 xhigh | Opus 5.5 high | none, see below |
+| standard | `agent` | Grok 4.7 xhigh | Opus 5.5 high | Fable 5.2 medium |
+| standard | `atomic` | GLM 5.3 max | Opus 5.5 high | Fable 5.2 medium |
+| standard | `atomic` | Grok 4.7 xhigh | Opus 5.5 high | Fable 5.2 medium |
+| standard | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 medium |
+| standard | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 medium |
+| complex | `agent` | Opus 5.5 xhigh | Grok 4.7 xhigh | Fable 5.2 medium |
+| complex | `atomic` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 medium |
+| complex | `atomic` | Fable 5.2 xhigh | Opus 5.5 high | Sonnet 5.5 max |
+| complex | `atomic-work` | Opus 5.5 xhigh | Sonnet 5.5 max | Fable 5.2 medium |
 
 - **Harnesses.** `atomic` is an Atomic harness on the default profile;
   `atomic-work` is one on the second account (`--agent-dir
@@ -42,7 +42,14 @@ tier label decides the tier; the writer comes from this table, not from a
   ([composer-grok.md](composer-grok.md)), only for a fleet manager that
   runs its units on the Cursor `agent` CLI; `scripts/pair.sh open
   --writer <model> --reviewer <model>` takes that row's Cursor model names
-  (`composer-2.5`, `grok-4.7-xhigh`, `claude-opus-5-5-xhigh`).
+  (`composer-2.5`, `grok-4.7-xhigh`, `claude-opus-5-5-high` to review,
+  `claude-opus-5-5-xhigh` to write).
+- **Effort for review and QA (Sid, 2026-11-12, on Anthropic's
+  recommendation).** An Opus 5.5 reviewer runs at high, not xhigh. A QA
+  seat on Opus 5.5 runs at high and one on Fable 5.2 at medium. Writers
+  keep their effort. A reviewer or QA seat already at work finishes it,
+  then restarts at the new level as soon as it is idle. CCFM alone edits
+  these settings in the shared skill and the shared policy.
 - **Policy files.** A tier holds one reviewer, so each reviewer has its
   own file: [templates/policy-presets.jsonc](../templates/policy-presets.jsonc)
   for every row Opus reviews (it matches the shared policy in dotfiles),

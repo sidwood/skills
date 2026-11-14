@@ -1,10 +1,11 @@
 // The fleet's model presets (Sid, 2026-11-10), for every writer that one
-// Opus 5.5 xhigh reviewer checks. No OpenAI model: that subscription has
+// Opus 5.5 high reviewer checks (high, not xhigh, since 2026-11-12:
+// Anthropic's recommendation for an Opus 5.5 reviewer). No OpenAI model: that subscription has
 // lapsed. references/model-tiers.md has the whole table, the Cursor pairs
 // and QA included.
-//   simple:   Sonnet 5.5 xhigh writes           -> one Opus 5.5 xhigh reviewer
-//   standard: GLM 5.3 max or Grok 4.7 xhigh     -> one Opus 5.5 xhigh reviewer
-//   complex:  Fable 5.2 xhigh writes            -> one Opus 5.5 xhigh reviewer
+//   simple:   Sonnet 5.5 xhigh writes           -> one Opus 5.5 high reviewer
+//   standard: GLM 5.3 max or Grok 4.7 xhigh     -> one Opus 5.5 high reviewer
+//   complex:  Fable 5.2 xhigh writes            -> one Opus 5.5 high reviewer
 // When Opus writes, use policy-presets-opus-writer.jsonc instead.
 // Copy this file into the project (.atomic/fleet/) and pass its absolute
 // path to every launch with the tier and that tier's writer:
@@ -31,17 +32,17 @@
     // One reviewer in every tier, never on the writer's model line.
     "simple": {
       "panel": 1,
-      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
+      "reviewer_model": "anthropic/claude-opus-5-5:high",
       "max_turns": 3
     },
     "standard": {
       "panel": 1,
-      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
+      "reviewer_model": "anthropic/claude-opus-5-5:high",
       "max_turns": 3
     },
     "complex": {
       "panel": 1,
-      "reviewer_model": "anthropic/claude-opus-5-5:xhigh",
+      "reviewer_model": "anthropic/claude-opus-5-5:high",
       "max_turns": 3
     }
   },

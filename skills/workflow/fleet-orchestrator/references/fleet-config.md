@@ -70,7 +70,7 @@ receipts and the exact operator-authorized legacy continuation schema.
       "branch": "the-stream-branch",
       "checkout": "/abs/path/to/seed-repo.the-stream-branch",
       "implRecipe": "grok-xhigh",
-      "reviewRecipe": "opus-max",
+      "reviewRecipe": "opus-high",
       "phase": "implementing | review-N | bounce-N | verdict-pending | approved | landed | hold",
       "bounceCount": 0,
       "dispatchCounters": { "impl": 1, "review": 2 },
@@ -134,6 +134,8 @@ and fallback order. This table is only its human-readable route summary.
 | `opus-medium` / `sol-medium` | the other recipe |
 | `composer-2.5` | `glm-53`, `grok-high` |
 
+- An Opus 5.5 reviewer runs on `opus-high`, not `opus-xhigh` or
+  `opus-max` (Sid, 2026-11-12, on Anthropic's recommendation).
 - `enabled: false` removes one recipe from both primary and fallback
   selection without deleting how to launch it. Set it back to `true` to
   re-enable it.
