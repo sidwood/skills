@@ -44,3 +44,30 @@ name.
 - Exercise the target application's native integration.
 - For cloud browsers or other metered leases, create the smallest useful
   resource, release it explicitly, and verify the provider reports it stopped.
+
+## SSH access to a new host (1Password SSH agent)
+
+1. Generate the key inside 1Password so the private half never touches disk:
+   `op item create --category "SSH Key" --ssh-generate-key ed25519 --vault <vault> --title "<Host> SSH Key" --format json`.
+   Keep only the public key and fingerprint from the JSON; match existing
+   key-item naming in that vault.
+2. Serve it: add an `[[ssh-keys]]` block (`item`, `vault`) to
+   `~/.config/1Password/ssh/agent.toml`, after backing the file up, then confirm
+   with `ssh-add -l` against the 1Password agent socket.
+3. Save the public key to a file outside any version-controlled `~/.ssh` and
+   connect with `-o IdentitiesOnly=yes -i <pubkey file>`; the agent offers
+   keys in order and servers cap auth attempts, so without it the right key
+   may never be tried.
+4. Authorize on the target: the user enables SSH (macOS: System Settings →
+   General → Sharing → Remote Login), copies the item's public key field and
+   runs `mkdir -p ~/.ssh && chmod 700 ~/.ssh && { pbpaste; echo; } >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`.
+   If the target's `~/.ssh` is a dotfiles symlink, keep `authorized_keys` out
+   of that repo.
+5. Verify: first connect with `StrictHostKeyChecking=accept-new`, `BatchMode=yes`,
+   and report the host-key fingerprint.
+
+Reachability: test the port (`nc -z -G 8 <host> 22`), not ping. A sleeping
+Mac's Wi-Fi chip can answer ping (slowly) while SSH is closed. A closed-lid
+MacBook sleeps, and an incoming connection only wakes it through a Bonjour
+sleep proxy (`dns-sd -B _sleep-proxy._udp local.`). Without one, the user
+opens the lid or runs `sudo pmset -a disablesleep 1` (undo with `0`).

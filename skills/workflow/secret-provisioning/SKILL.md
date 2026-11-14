@@ -1,6 +1,6 @@
 ---
 name: secret-provisioning
-description: Use when provisioning credentials into applications.
+description: Use when provisioning credentials or SSH access keys.
 ---
 
 # Secret Provisioning
@@ -58,5 +58,6 @@ boundary, without disclosing it, and verify the real integration.
 - Stop when the destination cannot accept the credential without disclosure.
   Ask the user for a safer supported boundary rather than weakening handling.
 
-For 1Password discovery and extraction, read
+For 1Password discovery and extraction, and for creating a 1Password-held SSH
+key and authorizing it on a new host, read
 [references/onepassword-cli.md](references/onepassword-cli.md).
