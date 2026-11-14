@@ -59,3 +59,8 @@ originating specification.
 - Inspect native-test entry points before execution: Cargo filters do not constrain `harness = false` binaries. When native side effects are outside reviewer authority, use explicit safe targets and distinguish reviewed native receipts from reviewer reruns.
 - An empty review is valid when the evidence supports it; never manufacture a
   finding to appear thorough.
+- For managed-transport corrections, test the installed relay path with fixture
+  credentials and a safe control request; direct-child behavior alone does not
+  establish the production boundary.
+- Assert refused-frame EOF and exact-child reaping before shutting down the
+  fixture service; teardown can otherwise hide a stranded connection or child.
