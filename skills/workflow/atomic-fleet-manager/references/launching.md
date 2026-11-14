@@ -32,7 +32,8 @@
    and `pane` repeat it for older callers), `run_id`, `policy`, `tier` and
    `state`. Run it once per issue, in sequence, so clones are not created
    concurrently. Add `--resolve-only` to preview the models and clone path
-   without starting any work. Through `hc exec`, where there is no
+   without starting any work. `--base-branch NAME` passes `base_branch` to
+   the workflow. Through `hc exec`, where there is no
    `HC_TERMINAL_ID`, pass `--space <space id>` (`--workspace` is the old
    name).
 5. **Verify each launch.** A harness counts as running when the script

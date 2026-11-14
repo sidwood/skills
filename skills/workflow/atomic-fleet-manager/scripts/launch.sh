@@ -27,6 +27,7 @@ Usage: launch.sh --issue ID --tier TIER [--writer MODEL] [options]
   --space ID           The fleet's GUI space (default: the caller's own
                        terminal's; --workspace is the old name). Needed when
                        run outside an hc terminal, as through hc exec.
+  --base-branch NAME   Passed to the workflow as base_branch
   --workflow NAME      Workflow to run (default: goal-select)
   --agent-dir DIR      Atomic agent directory to run this harness under, for
                        a second account's logins (~/.atomic-work/agent). The
@@ -42,7 +43,7 @@ USAGE
 }
 
 issue="" policy="" tier="" writer="" orchestrator="" tracker="linear" checkout="" objective="" seed="$PWD"
-workspace="" workflow="goal-select" resolve_only=""
+workspace="" workflow="goal-select" resolve_only="" base_branch=""
 timeout=60 max_workers=4 agent_dir=""
 policy_dir="${ATOMIC_POLICY_DIR:-$HOME/.config/atomic/goal-select-models}"
 
@@ -58,6 +59,7 @@ while [ $# -gt 0 ]; do
     --objective) objective="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
     --space|--workspace) workspace="$2"; shift 2 ;;
+    --base-branch) base_branch="$2"; shift 2 ;;
     --workflow) workflow="$2"; shift 2 ;;
     --agent-dir) agent_dir="$2"; shift 2 ;;
     --resolve-only) resolve_only=1; shift ;;
@@ -250,6 +252,7 @@ command_line="$command_line model_policy_path=$policy_path"
 [ -z "$writer" ] || command_line="$command_line writer_model=$writer"
 [ -z "$orchestrator" ] || command_line="$command_line orchestrator_model=$orchestrator"
 [ -z "$checkout" ] || command_line="$command_line branch_checkout_dir=$checkout"
+[ -z "$base_branch" ] || command_line="$command_line base_branch=$base_branch"
 [ -z "$resolve_only" ] || command_line="$command_line resolve_only=true"
 if [ -n "$objective" ]; then
   # JSON-quote so spaces, quotes and newlines survive as one key=value token.
