@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# A Cursor writer and a Cursor reviewer side by side in one Herdr tab, driven
-# by the fleet manager one prompt at a time. Every prompt is typed into the
-# agent's pane and is short enough to be read there in full; it names the
+# A Cursor writer and a Cursor reviewer side by side in one GUI tab, driven
+# by the fleet manager one prompt at a time. Each is an hc terminal named for
+# the issue (fleet.name) with the role pair-writer or pair-reviewer. Every
+# prompt is typed into the agent's terminal and is short enough to be read
+# there in full; it names the
 # brief and the standing rules, which are files in the clone under
 # .atomic/pair/ beside a copy of each prompt and the agents' reports.
 set -euo pipefail
@@ -14,24 +16,25 @@ Usage: pair.sh open   --issue ID --brief FILE [options]
        pair.sh say    --issue ID --to writer|reviewer --note TEXT
        pair.sh status --issue ID
 
-  open     Make a branch clone, open a tab named for the issue with the
-           writer above the reviewer, and send the writer round 1.
+  open     Make a branch clone, open a GUI tab named for the issue with the
+           writer beside the reviewer, and send the writer round 1.
   write    Send the writer the next round: the reviewer's findings.
   review   Send the reviewer the current round's work.
   say      Answer an agent inside the current round, without starting a
            new one: when it stopped to ask, or stopped before its report.
-  status   One line: round, pane states, verdict, and what comes next.
+  status   One line: round, agent states, verdict, and what comes next.
 
-  --issue ID         Tracker issue identifier, also the tab label (TUS-36)
+  --issue ID         Tracker issue identifier, also the terminals' name (TUS-36)
   --brief FILE       Work definition written from the tracker issue (open)
   --note TEXT        The fleet manager's own words, appended to the prompt
   --to ROLE          With say: writer or reviewer
-  --clone DIR        The pair's clone, when its tab cannot be found by label.
-                     With open: a pair's clone whose panes are gone (new
+  --clone DIR        The pair's clone, when its terminals cannot be found.
+                     With open: a pair's clone whose agents are gone (new
                      agents, same round files), or with --brief another
                      harness's unfinished clone to start a pair on
   --seed DIR         Seed checkout to clone from (default: current directory)
-  --workspace ID     Herdr workspace (default: $HERDR_WORKSPACE_ID)
+  --space ID         The fleet's GUI space (default: the caller's own;
+                     --workspace is the old name)
   --writer MODEL     Cursor model that writes (default: composer-2.5)
   --reviewer MODEL   Cursor model that reviews (default: grok-4.7-xhigh)
   --max-rounds N     Writer rounds allowed (default: 3)
@@ -46,7 +49,7 @@ fail() { echo "Error: $1" >&2; exit 1; }
 
 command="${1:-}"
 [ $# -gt 0 ] && shift
-issue="" brief="" note="" to="" clone="" seed="$PWD" workspace="${HERDR_WORKSPACE_ID:-}"
+issue="" brief="" note="" to="" clone="" seed="$PWD" workspace=""
 writer="" reviewer="" max_rounds="" max_workers="${FLEET_MAX_WORKERS:-4}" max_load=12
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -56,7 +59,7 @@ while [ $# -gt 0 ]; do
     --to) to="$2"; shift 2 ;;
     --clone) clone="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
-    --workspace) workspace="$2"; shift 2 ;;
+    --space|--workspace) workspace="$2"; shift 2 ;;
     --writer) writer="$2"; shift 2 ;;
     --reviewer) reviewer="$2"; shift 2 ;;
     --max-rounds) max_rounds="$2"; shift 2 ;;
@@ -72,51 +75,35 @@ case "$command" in
   -h|--help|"") usage; exit 0 ;;
   *) echo "Error: unknown command '$command'." >&2; usage >&2; exit 2 ;;
 esac
-[ "${HERDR_ENV:-}" = 1 ] || fail "not running inside a Herdr pane."
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fleet-hc.sh
+. "$(cd "$(dirname "$0")" && pwd)/fleet-hc.sh"
+fleet_need_hc
 [ -n "$issue" ] || fail "--issue is required."
-[ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
+[ -n "$workspace" ] || workspace="$(fleet_space)"
+[ -n "$workspace" ] || fail "no GUI space: run inside an hc terminal of the fleet or pass --space."
 
-pane_state() { # pane -> working | idle | done | blocked | gone
-  herdr pane get "$1" 2>/dev/null | python3 -c '
-import json, sys
-try:
-    pane = json.load(sys.stdin)["result"]["pane"]
-except Exception:
-    print("gone"); sys.exit()
-print(pane.get("agent_status") or "unknown" if pane.get("agent") == "cursor" else "gone")'
+# The agent's status as hc reports it (Cursor's agent reports its own), or
+# gone when its terminal has ended.
+pane_state() { # terminal -> working | idle | done | blocked | error | unknown | gone
+  local state
+  state="$(fleet_state "$1")"
+  echo "${state#* }"
 }
 
-# Issues that already have a pair open in this workspace, other than this one.
+# Issues that already have a pair open in this space, other than this one.
 other_pairs() {
-  local tabs
-  tabs="$(herdr tab list --workspace "$workspace")"
-  herdr pane list --workspace "$workspace" | TABS="$tabs" ISSUE="$issue" python3 -c '
-import json, os, sys
-labels = {t["tab_id"]: t["label"] for t in json.loads(os.environ["TABS"])["result"]["tabs"]}
-found = set()
-for pane in json.load(sys.stdin)["result"]["panes"]:
-    label = labels.get(pane["tab_id"], "")
-    if label != os.environ["ISSUE"] and os.path.isfile(os.path.join(pane.get("cwd") or "", ".atomic", "pair", "pair.env")):
-        found.add(label)
-print(" ".join(sorted(found)))'
+  fleet_snapshot "$workspace" | awk -F'\t' -v issue="$issue" '$3 == "pair-writer" && $2 != issue { print $2 }' | sort -u | tr '\n' ' ' | sed 's/ $//'
 }
 
-# The clone of the tab labeled for the issue.
+# The clone of the pair named for the issue: its writer's folder.
 find_clone() {
-  local tabs
-  tabs="$(herdr tab list --workspace "$workspace")"
-  herdr pane list --workspace "$workspace" | TABS="$tabs" ISSUE="$issue" python3 -c '
-import json, os, sys
-tabs = {t["tab_id"] for t in json.loads(os.environ["TABS"])["result"]["tabs"] if t["label"] == os.environ["ISSUE"]}
-for pane in json.load(sys.stdin)["result"]["panes"]:
-    cwd = pane.get("cwd") or ""
-    if pane["tab_id"] in tabs and os.path.isfile(os.path.join(cwd, ".atomic", "pair", "pair.env")):
-        print(cwd); break'
+  fleet_snapshot "$workspace" | awk -F'\t' -v issue="$issue" '$3 == "pair-writer" && $2 == issue { print $7; exit }'
 }
 
 load_pair() {
   [ -n "$clone" ] || clone="$(find_clone)"
-  [ -n "$clone" ] || fail "no pair tab labeled $issue in workspace $workspace; pass --clone."
+  [ -n "$clone" ] || fail "no pair named $issue in space $workspace; pass --clone."
   state="$clone/.atomic/pair"
   [ -f "$state/pair.env" ] || fail "'$clone' is not a pair clone (no .atomic/pair/pair.env)."
   local asked_rounds="$max_rounds"
@@ -134,36 +121,40 @@ verdict_of() { # round
     tail -1 | grep -Eo 'APPROVED|CHANGES_REQUESTED' || true
 }
 
-# Type the prompt file into the agent's pane and confirm the agent took it.
-send() { # pane file
+# Type the prompt file into the agent's terminal and confirm the agent took it.
+send() { # terminal file
   local ack tries=0
-  ack="$(herdr agent prompt "$1" "$(cat "$2")" 2>&1)" || fail "could not prompt pane $1: $ack"
-  case "$ack" in *'"error"'*) fail "could not prompt pane $1: $ack" ;; esac
+  ack="$(hc send "$1" "$(cat "$2")" 2>&1)" || fail "could not prompt terminal $1: $ack"
+  case "$ack" in *'"error"'*) fail "could not prompt terminal $1: $ack" ;; esac
   while [ "$tries" -lt 15 ]; do
     [ "$(pane_state "$1")" = working ] && return 0
     sleep 2
     tries=$((tries + 1))
   done
-  fail "pane $1 did not start working within 30 seconds; read it before sending anything else."
+  fail "terminal $1 did not start working within 30 seconds; read it (hc read $1) before sending anything else."
 }
 
-start_agent() { # pane name model
-  local pane="$1" name="$2" model="$3" out screen trusted=0 tries=0
-  out="$(herdr agent start "$name" --kind cursor --pane "$pane" --timeout 60000 -- --model "$model" -f 2>&1)" || true
-  case "$out" in *'"error"'*) fail "could not start $name in pane $pane: $out" ;; esac
+# Start a Cursor agent in a new terminal of the pair and wait for its prompt.
+# Sets started to the terminal's address.
+start_agent() { # role model [tab]
+  local role="$1" model="$2" tab="${3:-}" screen trusted=0 tries=0 where=()
+  [ -z "$tab" ] || where=(--tab "$tab")
+  started="$(fleet_open "$issue" "$role" "$clone" --space "$workspace" ${where[@]+"${where[@]}"} -- \
+    env "VITEST_MAX_WORKERS=$max_workers" agent --model "$model" -f)" || fail "could not start the $role for $issue."
+  [ -n "$started" ] || fail "could not start the $role for $issue."
   # Cursor asks to trust a checkout it has not seen before it takes a prompt.
   while [ "$tries" -lt 30 ]; do
-    screen="$(herdr pane read "$pane" --lines 40 2>/dev/null || true)"
+    screen="$(fleet_read "$started" 40 || true)"
     case "$screen" in
       *"Plan, search, build"*|*"Add a follow-up"*) return 0 ;;
       *"Trust this workspace"*)
-        [ "$trusted" = 1 ] || herdr pane send-text "$pane" "a" >/dev/null
+        [ "$trusted" = 1 ] || hc keys "$started" a >/dev/null
         trusted=1 ;;
     esac
     sleep 2
     tries=$((tries + 1))
   done
-  fail "$name did not reach its prompt in pane $pane."
+  fail "the $role did not reach its prompt in terminal $started."
 }
 
 # The standing rules live in two files in the clone, so the prompts typed into
@@ -195,7 +186,7 @@ EOF
   cat > "$state/reviewer-rules.md" <<EOF
 # Rules for the reviewer of $issue
 
-A different model wrote this work in the pane above. Do not edit, stage, commit or stash anything: the only file you write is your report.
+A different model wrote this work in the terminal beside yours. Do not edit, stage, commit or stash anything: the only file you write is your report.
 
 ## Read
 
@@ -221,14 +212,14 @@ Write \`.atomic/pair/round-N-review.md\`: numbered findings, most serious first,
 EOF
 }
 
-# Type the prompt file into its pane; say so when it is too long to be shown.
+# Type the prompt file into its terminal; say so when it is too long to be shown.
 deliver() { # role pane file round
   local chars
   [ -z "$note" ] || printf ' From the fleet manager: %s' "$note" >> "$3"
   chars="$(wc -m < "$3" | tr -d ' ')"
   send "$2" "$3"
-  echo "sent=$1 round=$4 pane=$2 chars=$chars prompt=$3"
-  [ "$chars" -le 500 ] || echo "note=this prompt is over 500 characters, so the pane shows it folded as [Pasted text]; the file has it in full."
+  echo "sent=$1 round=$4 terminal=$2 chars=$chars prompt=$3"
+  [ "$chars" -le 500 ] || echo "note=this prompt is over 500 characters, so the terminal shows it folded as [Pasted text]; the file has it in full."
 }
 
 write_round() {
@@ -266,7 +257,7 @@ review_round() {
   prev=$((round - 1))
   [ "$round" -gt 0 ] || fail "the writer has not had round 1 yet."
   [ -f "$state/round-$round-writer.md" ] ||
-    fail "the writer left no report for round $round (.atomic/pair/round-$round-writer.md). Read pane $writer_pane."
+    fail "the writer left no report for round $round (.atomic/pair/round-$round-writer.md). Read terminal $writer_pane."
   [ ! -f "$state/round-$round-review-prompt.md" ] || fail "round $round has already gone to the reviewer."
   [ ! -f "$state/round-$prev-head" ] ||
     since=" Changes since your last review: git diff $(cut -c1-12 "$state/round-$prev-head")..HEAD."
@@ -307,12 +298,12 @@ pair_status() {
   dirty="$(git -C "$clone" status --porcelain | wc -l | tr -d ' ')"
   commits="$(git -C "$clone" rev-list --count "$base..HEAD")"
   [ ! -f "$state/gate-$round.log" ] || gate_line="$(grep -E '^GATE_' "$state/gate-$round.log" | tail -1 | cut -d: -f1 || true)"
-  if [ "$w" = gone ] || [ "$r" = gone ]; then next="reopen (an agent has left its pane): pair.sh open --issue $issue --clone $clone"
+  if [ "$w" = gone ] || [ "$r" = gone ]; then next="reopen (an agent has left its terminal): pair.sh open --issue $issue --clone $clone"
   elif [ "$w" = working ] || [ "$r" = working ]; then next="wait"
   elif [ "$round" = 0 ]; then next="write"
-  elif [ ! -f "$state/round-$round-writer.md" ]; then next="read the writer's pane $writer_pane (no report for round $round), then answer it: pair.sh say --to writer --note ..."
+  elif [ ! -f "$state/round-$round-writer.md" ]; then next="read the writer's terminal $writer_pane (no report for round $round), then answer it: pair.sh say --to writer --note ..."
   elif [ ! -f "$state/round-$round-review-prompt.md" ]; then next="review"
-  elif [ -z "$verdict" ]; then next="read the reviewer's pane $reviewer_pane (no verdict for round $round), then answer it: pair.sh say --to reviewer --note ..."
+  elif [ -z "$verdict" ]; then next="read the reviewer's terminal $reviewer_pane (no verdict for round $round), then answer it: pair.sh say --to reviewer --note ..."
   elif [ "$verdict" = APPROVED ] && [ "$dirty" != 0 ]; then next="write --note (approved, but $dirty files are uncommitted)"
   elif [ "$verdict" = APPROVED ] && [ -x "$gate" ] && [ "$gate_line" != GATE_OK ]; then next="write --note (approved, but the gate's last line is '${gate_line:-missing}')"
   elif [ "$verdict" = APPROVED ]; then next="land"
@@ -364,7 +355,7 @@ open_pair() {
     local clearance="$seed/.atomic/fleet/clearance/$issue.md"
     [ -f "$clearance" ] || fail "no clearance for $issue. Read its blockers in the tracker and run clear.sh first."
     [ -n "$(find "$clearance" -mmin -30)" ] || fail "the clearance for $issue is older than 30 minutes. Read its blockers again and re-run clear.sh."
-    awk -v load="$(sysctl -n vm.loadavg | awk '{print $2}')" -v max="$max_load" 'BEGIN { exit !(load < max) }' ||
+    awk -v load="$(fleet_load)" -v max="$max_load" 'BEGIN { exit !(load < max) }' ||
       fail "the 1-minute load is at or above $max_load; start nothing until it falls."
     [ -z "$(git -C "$seed" status --porcelain)" ] || fail "seed '$seed' has uncommitted changes."
     base="$(git -C "$seed" rev-parse HEAD)"
@@ -386,20 +377,16 @@ open_pair() {
   # One model line never reviews its own work.
   [ "${writer%%-*}" != "${reviewer%%-*}" ] || fail "writer '$writer' and reviewer '$reviewer' are the same model line."
 
-  local created split tab writer_pane reviewer_pane
-  created="$(herdr tab create --workspace "$workspace" --cwd "$clone" --label "$issue" \
-    --env "VITEST_MAX_WORKERS=$max_workers" --no-focus)"
-  read -r tab writer_pane <<EOF
-$(printf '%s' "$created" | python3 -c 'import json,sys
-r=json.load(sys.stdin)["result"]
-print(r["tab"]["tab_id"], r["root_pane"]["pane_id"])')
-EOF
-  start_agent "$writer_pane" "$slug-writer" "$writer"
-  split="$(herdr pane split "$writer_pane" --direction down --cwd "$clone" \
-    --env "VITEST_MAX_WORKERS=$max_workers" --no-focus)"
-  reviewer_pane="$(printf '%s' "$split" | python3 -c 'import json,sys
-print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')"
-  start_agent "$reviewer_pane" "$slug-reviewer" "$reviewer"
+  local tab writer_pane reviewer_pane started=""
+  start_agent pair-writer "$writer"
+  writer_pane="$started"
+  fleet_name_tab "$writer_pane" "$issue"
+  # The reviewer joins the writer's GUI tab when the window can say which
+  # one it is; otherwise it gets a tab of its own.
+  tab="$(fleet_tab_of "$writer_pane")"
+  start_agent pair-reviewer "$reviewer" "$tab"
+  reviewer_pane="$started"
+  [ -n "$tab" ] || fleet_name_tab "$reviewer_pane" "$issue"
 
   cat > "$state/pair.env.new" <<EOF
 issue='$issue'

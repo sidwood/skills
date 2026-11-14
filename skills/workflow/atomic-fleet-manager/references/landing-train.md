@@ -146,7 +146,7 @@ When the reviewer approves a train, for each issue in it:
 3. Remove the clone with `git bc-rm` (read `git bc-rm -h` first). It refuses
    dirty trees and clones holding commits found nowhere else; on a
    refusal, find the cause with the check below before deciding.
-4. Close the issue's Herdr tab: `herdr tab close <tab id>`.
+4. Close the issue's terminal: `hc kill <t>`, then `hc rm <t>`.
 5. Move the issue to its done state in the tracker.
 
 A rebased commit has a new hash, so `git bc-rm` may refuse because it sees
@@ -176,7 +176,7 @@ leave the deletion to them; do not script a recursive delete.
 
 
 Keep the staging clone for the next train. Leave rejected issues' clones
-and tabs in place for the follow-up run.
+and terminals in place for the follow-up run.
 
 ## Tickets that carry a migration
 
@@ -201,7 +201,7 @@ stacks. Landing them one at a time makes every one bounce off the one before.
 ## When the seed may move
 
 - Move the seed only after the QA agent's report says it is finished with
-  the working tree. Read the report; do not rely on the pane's status.
+  the working tree. Read the report; do not rely on the terminal's status.
 - A QA agent with background runs still going shows as idle. If its last
   message mentions runs in progress, the seed stays still.
 - A harness must never push or change the seed. If one does, have the QA
@@ -211,9 +211,11 @@ stacks. Landing them one at a time makes every one bounce off the one before.
 ## Cleanup is one command
 
 After the QA agent approves a train, remove each of its harnesses with
-`scripts/cleanup.sh --clone <dir> --tab <tab>`. It refuses, and removes
-nothing, unless every commit in the clone is on the remote default branch.
-Do not drop the database, close the tab or remove the clone by hand first.
+`scripts/cleanup.sh --clone <dir> --terminal <t>` (`--tab` is the old
+name), which kills and removes the terminal (`hc kill`, `hc rm`). It
+refuses, and removes nothing, unless every commit in the clone is on the
+remote default branch. Do not drop the database, close the terminal or
+remove the clone by hand first.
 
 ## Chromium-only component failures mean another checkout's servers
 
@@ -262,14 +264,15 @@ open findings listed in the final report. It is not a failure:
    findings as the objective), moves tier, or is reshaped.
 
 `needs_human` is different: the orchestrator produced no work or the
-reviewers could not run. Read the pane and the ledger before anything else.
+reviewers could not run. Read the terminal and the ledger before anything
+else.
 
 One case of it is common and costs nothing but a relaunch: the ledger's
 last lifecycle line reads "Orchestrator failed before producing a
 receipt: CleanupFailed ... Session shutdown failed", with no review, yet
 `orchestrator-receipt.md` in the run's artifact folder says ready for
 review, the clone is clean and its gate log ends `GATE_OK` on the head
-commit. The work is whole; only the session died. Close the tab and
+commit. The work is whole; only the session died. Close the terminal and
 relaunch in the clone with `--checkout` as a review run. The objective
 names the head commit and its commits, the gate log's path and the first
 run's notes, and says: the writer's turn is a check only (clean tree,

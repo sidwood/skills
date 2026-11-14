@@ -7,15 +7,20 @@ usage() {
   cat <<'USAGE'
 Usage: resume.sh --issue ID [options]
 
-  --issue ID          Tracker issue identifier (TUS-58); also the tab label
+  --issue ID          Tracker issue identifier (TUS-58); also the name of its
+                      terminal (fleet.name)
   --run RUN_ID        Run to resume (default: the issue's most recent run)
   --message TEXT      News for the orchestrator, delivered with the resume
-  --fresh             Resume from a new Atomic process in a new tab, for a
-                      dead session or a stale provider login. Close the old
-                      tab first.
+  --fresh             Resume from a new Atomic process in a new terminal, for
+                      a dead session or a stale provider login. Close the
+                      old terminal first (hc kill, hc rm).
   --cwd DIR           Working directory for --fresh (default: the run's own)
   --agent-dir DIR     Atomic agent directory for --fresh, when the run was
                       launched under a second account (launch.sh --agent-dir)
+  --terminal T        The run's terminal (default: the one named for the
+                      issue, found through status.sh)
+  --space ID          The fleet's GUI space (default: the caller's own;
+                      --workspace is the old name). Needed through hc exec.
   --max-load N        Refuse above this 1-minute load average (default 12)
   --timeout SECONDS   Wait this long for the run to go live (default 120)
   --status            Print the run's state and exit; resume nothing
@@ -25,8 +30,8 @@ Exits 1 with the reason when the run cannot be resumed or ends blocked.
 USAGE
 }
 
-issue="" run="" message="" fresh="" cwd="" max_load=12 timeout=300 status_only="" agent_dir=""
-workspace="${HERDR_WORKSPACE_ID:-}"
+issue="" run="" message="" fresh="" cwd="" terminal="" max_load=12 timeout=300 status_only="" agent_dir=""
+workspace=""
 database="${ATOMIC_WORKFLOW_DATABASE_URL:-postgresql://postgres:atomic@127.0.0.1:5439/atomic_workflows_dbos_sys}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +41,8 @@ while [ $# -gt 0 ]; do
     --fresh) fresh=1; shift ;;
     --cwd) cwd="$2"; shift 2 ;;
     --agent-dir) agent_dir="$2"; shift 2 ;;
+    --space|--workspace) workspace="$2"; shift 2 ;;
+    --terminal) terminal="$2"; shift 2 ;;
     --max-load) max_load="$2"; shift 2 ;;
     --timeout) timeout="$2"; shift 2 ;;
     --status) status_only=1; shift ;;
@@ -97,23 +104,18 @@ case "$status" in
 esac
 [ "$resumable" != false ] || fail "run $run is marked not resumable: $error"
 
-# macOS reports "{ 1m 5m 15m }" through sysctl; Linux keeps it in /proc.
-if [ -r /proc/loadavg ]; then
-  load="$(awk '{print $1}' /proc/loadavg)"
-else
-  load="$(sysctl -n vm.loadavg | awk '{print $2}')"
-fi
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fleet-hc.sh
+. "$here/fleet-hc.sh"
+fleet_need_hc
+load="$(fleet_load)"
 awk -v l="$load" -v m="$max_load" 'BEGIN { exit !(l < m) }' ||
   fail "the 1-minute load average is $load (limit $max_load); a resume now would die the same way. Wait for it to fall."
 
-[ "${HERDR_ENV:-}" = 1 ] || fail "not running inside a Herdr pane."
-[ -n "$workspace" ] || fail "HERDR_WORKSPACE_ID is not set."
+[ -n "$workspace" ] || workspace="$(fleet_space)"
+[ -n "$workspace" ] || fail "no GUI space: run inside an hc terminal of the fleet or pass --space."
 
-pane_state() {
-  herdr pane get "$1" | python3 -c 'import json,sys
-p=json.load(sys.stdin)["result"]["pane"]
-print(p.get("agent") or "none", p.get("agent_status") or "unknown")'
-}
+pane_state() { fleet_state "$1"; }
 
 if [ -n "$fresh" ]; then
   # Atomic lets another process take a run over only after its owner has
@@ -121,33 +123,30 @@ if [ -n "$fresh" ]; then
   [ "$idle" -ge 120 ] || fail "run $run was last written ${idle}s ago; a fresh process may take it over after 120s. Quit the old session and wait."
   dir="${cwd:-$run_cwd}"
   [ -d "$dir" ] || fail "the run's working directory '$dir' is gone; pass --cwd."
-  tab_env=()
+  run_env=(env)
   if [ -n "$agent_dir" ]; then
     agent_dir="${agent_dir/#\~/$HOME}"
     [ -f "$agent_dir/auth.json" ] || fail "--agent-dir '$agent_dir' has no auth.json."
-    tab_env=(--env "ATOMIC_CODING_AGENT_DIR=$agent_dir")
+    run_env=(env -u ANTHROPIC_API_KEY "ATOMIC_CODING_AGENT_DIR=$agent_dir")
   fi
-  created="$(herdr tab create --workspace "$workspace" --cwd "$dir" --label "$issue" ${tab_env[@]+"${tab_env[@]}"} --no-focus)"
-  pane="$(printf '%s' "$created" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')"
-  if [ -n "$agent_dir" ]; then
-    herdr pane run "$pane" "env -u ANTHROPIC_API_KEY atomic" >/dev/null
-  else
-    herdr pane run "$pane" atomic >/dev/null
-  fi
+  pane="$(fleet_open "$issue" harness "$dir" --space "$workspace" -- "${run_env[@]}" atomic)" ||
+    fail "could not open a terminal for $issue."
   waited=0
   until case "$(pane_state "$pane")" in "atomic idle"|"atomic done") true ;; *) false ;; esac; do
-    [ "$waited" -lt 60 ] || fail "Atomic was not ready in pane $pane after 60s; the tab is left open."
+    [ "$waited" -lt 60 ] || fail "Atomic was not ready in terminal $pane after 60s; the terminal is left open."
     sleep 2; waited=$((waited + 2))
   done
+  fleet_name_tab "$pane" "$issue"
   # A process other than the run's owner may resume only the whole run.
   text="/workflow resume $run"
 else
-  pane="$("$here/status.sh" "$workspace" | awk -F'\t' -v l="$issue" '$1 == l { print $2 }' | tail -1)"
-  [ -n "$pane" ] || fail "no tab labeled $issue; use --fresh to resume from a new Atomic process."
+  pane="$terminal"
+  [ -n "$pane" ] || pane="$("$here/status.sh" "$workspace" | awk -F'\t' -v l="$issue" '$1 == l { print $2 }' | tail -1)"
+  [ -n "$pane" ] || fail "no terminal named $issue; use --fresh to resume from a new Atomic process."
   case "$(pane_state "$pane")" in
-    "atomic working") fail "the Atomic session in $pane is busy; read the pane before resuming." ;;
+    "atomic working") fail "the Atomic session in $pane is busy; read it (hc read $pane) before resuming." ;;
     atomic*) ;;
-    *) fail "pane $pane has no Atomic session; use --fresh." ;;
+    *) fail "terminal $pane has no Atomic session; use --fresh." ;;
   esac
   # Plain language is the reliable form in the owning session: the slash
   # command reads the word after the run id as a stage name.
@@ -163,20 +162,16 @@ fi
 # running in this session". Count those refusals so a new one can be told
 # from an old one still on the screen.
 refusals() {
-  herdr pane read "$pane" --source recent-unwrapped --lines 200 2>/dev/null |
+  fleet_read "$pane" 200 |
     tr -d '\n│' | tr -s ' ' | { grep -o "already running in this session" || true; } | wc -l | tr -d ' '
 }
-submit() {
-  herdr pane send-text "$pane" "$1" >/dev/null
-  sleep 1
-  herdr pane send-keys "$pane" Enter >/dev/null
-}
+submit() { fleet_send "$pane" "$1"; }
 
-# Since Atomic 0.9.28 a resume opens the run's graph in the pane. The fleet's
-# scripts read the chat view, where the run's panel is, so go back to it.
+# Since Atomic 0.9.28 a resume opens the run's graph in the terminal. The
+# fleet's scripts read the chat view, where the run's panel is, so go back.
 leave_graph() {
-  if herdr pane read "$pane" --source recent-unwrapped --lines 12 2>/dev/null | grep -q "return to main chat"; then
-    herdr pane send-keys "$pane" "ctrl+x" >/dev/null 2>&1 || true
+  if fleet_read "$pane" | tail -12 | grep -q "return to main chat"; then
+    hc keys "$pane" ctrl+x >/dev/null 2>&1 || true
   fi
 }
 
@@ -197,7 +192,7 @@ while :; do
     requit=1
     submit "/workflow quit $run"
     quit_waited=0
-    until herdr pane read "$pane" --source recent-unwrapped --lines 60 2>/dev/null | grep -q "quit and can be resumed"; do
+    until fleet_read "$pane" 60 | grep -q "quit and can be resumed"; do
       sleep 3; quit_waited=$((quit_waited + 3))
       [ "$quit_waited" -lt 60 ] || fail "run $run is held in $pane and did not quit; read the pane."
     done
@@ -222,4 +217,5 @@ done
 leave_graph
 
 echo "RESUMED: $issue $run $(latest_stage "$run")"
+echo "terminal=$pane"
 echo "pane=$pane"

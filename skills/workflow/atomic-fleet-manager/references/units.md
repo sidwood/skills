@@ -72,7 +72,7 @@ scripts/launch.sh --issue M2-U1 --tracker none \
   --objective "Work M2 unit 1: two tracker issues as one unit of work. The brief is the file <path>. It is part of this objective ..."
 ```
 
-- `--issue` is the unit's key: it names the tab and the clearance. With
+- `--issue` is the unit's key: it names the terminal and the clearance. With
   `--tracker none` the clone is named from the objective's first words.
 - Read every ticket's state and relations fresh before `clear.sh`, as for
   any first launch. `clear.sh` wants a `--blocker` state for every ticket
@@ -84,8 +84,9 @@ scripts/launch.sh --issue M2-U1 --tracker none \
 - A panel or round limit that differs from the shared policy goes in a
   policy file kept in the project and passed with `--policy`. Do not edit
   the shared policy for one unit or one milestone.
-- `--resolve-only` still opens a tab and writes a row in `launched.tsv`.
-  Close the tab and remove the row afterwards.
+- `--resolve-only` still opens a terminal and writes a row in
+  `launched.tsv`. Close the terminal (`hc kill <t>`, `hc rm <t>`) and
+  remove the row afterwards.
 - After the run id is confirmed, set every ticket in the unit to started.
 
 ## Landing and review

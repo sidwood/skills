@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Start one Atomic goal-select harness in its own Herdr tab and confirm it was
-# dispatched. Prints one "key=value" line per fact for the caller to read.
+# Start one Atomic goal-select harness in its own Herdr Core terminal and
+# confirm it was dispatched. Prints one "key=value" line per fact for the
+# caller to read: terminal= (also printed as tab= and pane=), run_id=,
+# policy=, tier= and state=.
 set -euo pipefail
 
 usage() {
@@ -8,7 +10,8 @@ usage() {
 Usage: launch.sh --issue ID --tier TIER [--writer MODEL] [options]
        launch.sh --issue ID --policy PATH [options]
 
-  --issue ID           Tracker issue identifier, also the tab label (TUS-150)
+  --issue ID           Tracker issue identifier, also the terminal's
+                       fleet.name and its GUI tab name (TUS-150)
   --tier TIER          Review tier from the issue's label: simple, standard
                        or complex (the shared policy defines each)
   --writer MODEL       Writer model with effort (default: the shared policy's
@@ -21,7 +24,9 @@ Usage: launch.sh --issue ID --tier TIER [--writer MODEL] [options]
                        which makes a new clone from the seed)
   --objective TEXT     Text added to the issue as this run's objective
   --seed DIR           Seed checkout to launch from (default: current directory)
-  --workspace ID       Herdr workspace (default: $HERDR_WORKSPACE_ID)
+  --space ID           The fleet's GUI space (default: the caller's own
+                       terminal's; --workspace is the old name). Needed when
+                       run outside an hc terminal, as through hc exec.
   --workflow NAME      Workflow to run (default: goal-select)
   --agent-dir DIR      Atomic agent directory to run this harness under, for
                        a second account's logins (~/.atomic-work/agent). The
@@ -37,7 +42,7 @@ USAGE
 }
 
 issue="" policy="" tier="" writer="" orchestrator="" tracker="linear" checkout="" objective="" seed="$PWD"
-workspace="${HERDR_WORKSPACE_ID:-}" workflow="goal-select" resolve_only=""
+workspace="" workflow="goal-select" resolve_only=""
 timeout=60 max_workers=4 agent_dir=""
 policy_dir="${ATOMIC_POLICY_DIR:-$HOME/.config/atomic/goal-select-models}"
 
@@ -52,7 +57,7 @@ while [ $# -gt 0 ]; do
     --checkout) checkout="$2"; shift 2 ;;
     --objective) objective="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
-    --workspace) workspace="$2"; shift 2 ;;
+    --space|--workspace) workspace="$2"; shift 2 ;;
     --workflow) workflow="$2"; shift 2 ;;
     --agent-dir) agent_dir="$2"; shift 2 ;;
     --resolve-only) resolve_only=1; shift ;;
@@ -65,14 +70,18 @@ done
 
 fail() { echo "Error: $1" >&2; exit 1; }
 
-[ "${HERDR_ENV:-}" = 1 ] || fail "not running inside a Herdr pane."
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fleet-hc.sh
+. "$(cd "$(dirname "$0")" && pwd)/fleet-hc.sh"
+fleet_need_hc
+[ -n "$workspace" ] || workspace="$(fleet_space)"
 [ -n "$issue" ] || fail "--issue is required."
 # A follow-up in an existing clone is small work on reviewed code: it gets
 # the simple tier unless told otherwise, and the gate is its proof.
 if [ -z "$tier" ] && [ -z "$policy" ] && [ -n "$checkout" ] && [ "$checkout" != auto ]; then tier="simple"; fi
 [ -n "$policy" ] || [ -n "$tier" ] || fail "--tier is required (or --policy for a policy file)."
 case "$tier" in ""|simple|standard|complex) ;; *) fail "--tier must be simple, standard or complex, got '$tier'." ;; esac
-[ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
+[ -n "$workspace" ] || fail "no GUI space: run inside an hc terminal of the fleet or pass --space."
 command -v atomic >/dev/null || fail "atomic is not on PATH."
 # A second account lives in its own agent directory. An API key in the
 # environment would win over that directory's login, so it is unset for the
@@ -168,19 +177,8 @@ if [ -n "$checkout" ] && [ ! -d "$(dirname "$seed")/$checkout" ] && [ ! -d "$che
   fail "checkout '$checkout' does not exist beside the seed."
 fi
 
-json_field() {
-  python3 -c 'import json,sys
-d=json.load(sys.stdin)
-for k in sys.argv[1].split("."):
-    d=d[k]
-print(d if d is not None else "")' "$1"
-}
-
-pane_state() {
-  herdr pane get "$1" | python3 -c 'import json,sys
-p=json.load(sys.stdin)["result"]["pane"]
-print(p.get("agent") or "none", p.get("agent_status") or "unknown")'
-}
+pane_state() { fleet_state "$1"; }
+pane_read() { fleet_read "$1" 200; }
 
 # Many harnesses share one machine: cap each one's test workers, and say so
 # in the objective, because not every runner reads the environment.
@@ -220,26 +218,30 @@ tab_env+=(--env "GOOGLE_APPLICATION_CREDENTIALS=$no_cloud/no-credentials.json" -
 # The same for Scaleway and Kubernetes: the user's scw and kubectl logins stay out of harness tabs.
 tab_env+=(--env "SCW_CONFIG_PATH=$no_cloud/scw-config.yaml" --env "KUBECONFIG=$no_cloud/no-kubeconfig")
 [ -z "$agent_dir" ] || tab_env+=(--env "ATOMIC_CODING_AGENT_DIR=$agent_dir")
-created="$(herdr tab create --workspace "$workspace" --cwd "$seed" --label "$issue" \
-  "${tab_env[@]}" --no-focus)"
-tab="$(printf '%s' "$created" | json_field result.tab.tab_id)"
-pane="$(printf '%s' "$created" | json_field result.root_pane.pane_id)"
+# hc run takes no environment of its own, so Atomic starts under env. The
+# terminal outlives this script and keeps a shell if Atomic exits, so its
+# screen stays readable.
+run_env=()
+for ((i = 1; i < ${#tab_env[@]}; i += 2)); do run_env+=("${tab_env[i]}"); done
+[ -z "$agent_dir" ] || run_env=(-u ANTHROPIC_API_KEY "${run_env[@]}")
+pane="$(fleet_open "$issue" harness "$seed" --space "$workspace" -- env "${run_env[@]}" atomic)" ||
+  fail "could not open a terminal for $issue."
+[ -n "$pane" ] || fail "could not open a terminal for $issue."
+tab="$pane"
+# terminal= is the hc address; tab= and pane= repeat it for older callers.
+echo "terminal=$pane"
 echo "tab=$tab"
 echo "pane=$pane"
-
-if [ -n "$agent_dir" ]; then
-  # One word, so Herdr types it as written and reads no flag of its own in it.
-  herdr pane run "$pane" "env -u ANTHROPIC_API_KEY atomic" >/dev/null
-  echo "agent_dir=$agent_dir"
-else
-  herdr pane run "$pane" atomic >/dev/null
-fi
+[ -z "$agent_dir" ] || echo "agent_dir=$agent_dir"
 
 waited=0
 until case "$(pane_state "$pane")" in "atomic idle"|"atomic done") true ;; *) false ;; esac; do
-  [ "$waited" -lt "$timeout" ] || fail "Atomic was not ready in pane $pane after ${timeout}s; the tab is left open."
+  [ "$waited" -lt "$timeout" ] || fail "Atomic was not ready in terminal $pane after ${timeout}s; the terminal is left open."
   sleep 2; waited=$((waited + 2))
 done
+# The GUI names the new tab by number; rename it for the issue. Without a
+# window on this machine (a launch through hc exec), the caller names it.
+fleet_name_tab "$pane" "$issue"
 
 command_line="/workflow $workflow"
 [ "$tracker" = none ] || command_line="$command_line tracker=$tracker tracker_issue=$issue"
@@ -255,26 +257,25 @@ if [ -n "$objective" ]; then
   command_line="$command_line objective=$quoted"
 fi
 
-herdr pane send-text "$pane" "$command_line" >/dev/null
-sleep 1
-herdr pane send-keys "$pane" Enter >/dev/null
+fleet_send "$pane" "$command_line"
 
 run_id=""
 waited=0
 while [ -z "$run_id" ]; do
-  [ "$waited" -lt "$timeout" ] || fail "no dispatch seen in pane $pane after ${timeout}s; read the pane before retrying."
+  [ "$waited" -lt "$timeout" ] || fail "no dispatch seen in terminal $pane after ${timeout}s; read it (hc read $pane) before retrying."
   sleep 3; waited=$((waited + 3))
   # The run id is the newest UUID in the pane that is not part of a path
   # shown there (a scratch checkout under a session directory carries one).
-  run_id="$(herdr pane read "$pane" 2>/dev/null |
+  run_id="$(pane_read "$pane" 2>/dev/null |
     grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' |
     grep -v -F -x -f <(printf '%s\n%s\n' "$seed" "$checkout" | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; echo "no-uuid") |
     tail -1 || true)"
 done
 
 echo "run_id=$run_id"
-# Record the run this pane was launched with: status.sh compares it with the
-# run the pane shows, to catch a session that starts another run by itself.
+# Record the run this terminal was launched with: status.sh compares it with
+# the run the terminal shows, to catch a session that starts another run by
+# itself.
 launch_log="${XDG_STATE_HOME:-$HOME/.local/state}/atomic-fleet/launched.tsv"
 mkdir -p "$(dirname "$launch_log")"
 printf '%s\t%s\t%s\t%s\n' "$pane" "$issue" "$run_id" "$(date +%s)" >>"$launch_log"

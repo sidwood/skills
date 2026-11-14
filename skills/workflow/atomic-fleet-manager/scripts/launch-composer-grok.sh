@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Start one composer-grok harness: make a branch clone from the seed, open a
-# Herdr tab named for the issue, and run composer-grok.sh in it. Prints one
+# Start one composer-grok harness: make a branch clone from the seed, open an
+# hc terminal named for the issue, and run composer-grok.sh in it. Prints one
 # "key=value" line per fact for the caller to read.
 set -euo pipefail
 
@@ -8,24 +8,25 @@ usage() {
   cat <<'USAGE'
 Usage: launch-composer-grok.sh --issue ID --brief FILE [options]
 
-  --issue ID         Tracker issue identifier, also the tab label (TUS-36)
+  --issue ID         Tracker issue identifier, also the terminal's name (TUS-36)
   --brief FILE       Work definition written from the tracker issue
   --seed DIR         Seed checkout to clone from (default: current directory)
-  --workspace ID     Herdr workspace (default: $HERDR_WORKSPACE_ID)
+  --space ID         The fleet's GUI space (default: the caller's own;
+                     --workspace is the old name)
   --writer MODEL     Passed to composer-grok.sh (default: composer-2.5)
   --reviewer MODEL   Passed to composer-grok.sh (default: grok-4.7-xhigh)
   --rounds N         Passed to composer-grok.sh (default: 3)
 USAGE
 }
 
-issue="" brief="" seed="$PWD" workspace="${HERDR_WORKSPACE_ID:-}"
+issue="" brief="" seed="$PWD" workspace=""
 writer="composer-2.5" reviewer="grok-4.7-xhigh" rounds=3
 while [ $# -gt 0 ]; do
   case "$1" in
     --issue) issue="$2"; shift 2 ;;
     --brief) brief="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
-    --workspace) workspace="$2"; shift 2 ;;
+    --space|--workspace) workspace="$2"; shift 2 ;;
     --writer) writer="$2"; shift 2 ;;
     --reviewer) reviewer="$2"; shift 2 ;;
     --rounds) rounds="$2"; shift 2 ;;
@@ -36,10 +37,14 @@ done
 
 fail() { echo "Error: $1" >&2; exit 1; }
 
-[ "${HERDR_ENV:-}" = 1 ] || fail "not running inside a Herdr pane."
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fleet-hc.sh
+. "$(cd "$(dirname "$0")" && pwd)/fleet-hc.sh"
+fleet_need_hc
+[ -n "$workspace" ] || workspace="$(fleet_space)"
 [ -n "$issue" ] || fail "--issue is required."
 [ -f "$brief" ] || fail "--brief must name an existing file."
-[ -n "$workspace" ] || fail "no Herdr workspace; pass --workspace."
+[ -n "$workspace" ] || fail "no GUI space: run inside an hc terminal of the fleet or pass --space."
 command -v agent >/dev/null || fail "The Cursor command, agent, is not on PATH."
 agent status 2>/dev/null | grep -q "Logged in" || fail "The Cursor command, agent, is not logged in."
 
@@ -60,18 +65,14 @@ mkdir -p "$clone/.atomic/composer-grok"
 cp "$brief" "$clone/.atomic/composer-grok/brief.md"
 
 driver="$(cd "$(dirname "$0")" && pwd)/composer-grok.sh"
-created="$(herdr tab create --workspace "$workspace" --cwd "$clone" --label "$issue" \
-  --env "VITEST_MAX_WORKERS=${FLEET_MAX_WORKERS:-4}" --no-focus)"
-read -r tab pane <<EOF
-$(printf '%s' "$created" | python3 -c 'import json,sys
-r=json.load(sys.stdin)["result"]
-print(r["tab"]["tab_id"], r["root_pane"]["pane_id"])')
-EOF
-
-herdr pane run "$pane" "$driver" --issue "$issue" --clone "$clone" \
+pane="$(fleet_open "$issue" composer-grok "$clone" --space "$workspace" -- \
+  env "VITEST_MAX_WORKERS=${FLEET_MAX_WORKERS:-4}" "$driver" --issue "$issue" --clone "$clone" \
   --brief "$clone/.atomic/composer-grok/brief.md" --base "$base" \
-  --writer "$writer" --reviewer "$reviewer" --rounds "$rounds" >/dev/null
+  --writer "$writer" --reviewer "$reviewer" --rounds "$rounds")" || fail "could not open a terminal for $issue."
+fleet_name_tab "$pane" "$issue"
+tab="$pane"
 
+echo "terminal=$pane"
 echo "tab=$tab"
 echo "pane=$pane"
 echo "clone=$clone"

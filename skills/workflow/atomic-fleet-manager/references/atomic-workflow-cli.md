@@ -47,16 +47,18 @@ are policy files copied into the project from this skill's `templates/`
 - With a tracker the first stages are the tracker check, the issue fetch and
   the Goal run, so a run reads `2/3` early on; the total grows as the Goal
   run adds stages (`3/6` was seen after 20 minutes).
-- A paused run shows `1 paused` in the panel header and the pane goes `done`
-  or `idle`. A harness may pause itself, for example when the issue says to
-  start after another issue that has not landed.
+- A paused run shows `1 paused` in the panel header and the terminal goes
+  `done` or `idle`. A harness may pause itself, for example when the issue
+  says to start after another issue that has not landed.
 - A `resolve_only` run finishes in under a second and reads
   `goal-select · complete`.
-- Herdr's pane status for Atomic: `working` while the run is active,
+- hc's status for an Atomic terminal (`hc get <t>`: `status.app` is
+  `atomic`, `status.state` the word): `working` while the run is active,
   `blocked` when it needs an answer or approval, `idle` or `done` when
-  nothing is running. A failed run can also end as `idle`; read the pane.
+  nothing is running. A failed run can also end as `idle`; read the
+  screen (`hc read <t> --lines 0`).
 
-## Controlling a run from its tab
+## Controlling a run from its terminal
 
 ```text
 /workflow status [run-id]
@@ -68,25 +70,25 @@ are policy files copied into the project from this skill's `templates/`
 
 A run id is the full UUID or its first 8 hexadecimal characters.
 
-Send these from the tab's main chat, the view with the `BACKGROUND` panel. A pane left in the graph view swallows the typed text, and Enter there opens a stage chat instead; press ctrl+x until the `BACKGROUND` panel shows, then type the command, Enter to take the completion, Enter to run it. The pane answers `Run <id> paused and can be resumed.`
+Send these from the terminal's main chat, the view with the `BACKGROUND` panel. A terminal left in the graph view swallows the typed text, and Enter there opens a stage chat instead; press ctrl+x (`hc keys <t> ctrl+x`) until the `BACKGROUND` panel shows, then type the command, Enter to take the completion, Enter to run it. The terminal answers `Run <id> paused and can be resumed.`
 
 ## How steering travels (Intercom)
 
 Atomic sessions and workflow stages message each other with the `intercom`
 tool. It exists only inside Atomic, so an outside manager steers through
-the Atomic chat in the issue's tab, which relays. Checked against the
+the Atomic chat in the issue's terminal, which relays. Checked against the
 bundled `docs/intercom.md` and `docs/intercom/reference.md` on 2026-10-04.
 
 - **Address.** A stage is `workflow:<run id>/<stage>` (for example
   `workflow:<run id>/orchestrator-1`); `*` matches one segment and `**` any
   depth. The `sessionId` shown by `/workflow status` is not an address.
-- **Joining.** The tab's chat must join the group `workflow:<run id>`
+- **Joining.** The terminal's chat must join the group `workflow:<run id>`
   before it can list, send to or ask that run's stages. It does this itself
   when asked to steer; name the run id so it joins the right one.
 - **`send` or `ask`.** `send` returns once the message is transported; that
   receipt is not the model accepting it. `ask` waits for the stage's reply,
-  up to 10 minutes, and needs a live stage. Ask the tab to use `ask` when
-  you need an acknowledgement to relay.
+  up to 10 minutes, and needs a live stage. Ask the terminal's chat to use
+  `ask` when you need an acknowledgement to relay.
 - **Cost of a message.** A working stage treats a message as priority
   input: its current model call or cancellable tool is cancelled and the
   message is handled next. Side effects already completed are kept. Put all
@@ -99,9 +101,9 @@ bundled `docs/intercom.md` and `docs/intercom/reference.md` on 2026-10-04.
 - **Paused runs.** A paused stage has no live target for `ask`.
   `/workflow resume <run id> <stage> <message>` forwards the message and
   resumes the run, but the word after the run id is read as the stage name,
-  so a message without one fails with "Stage not found". Asking the tab's
-  chat in plain language to resume and deliver the message is the reliable
-  route.
+  so a message without one fails with "Stage not found". Asking the
+  terminal's chat in plain language to resume and deliver the message is
+  the reliable route.
 - **No cross-harness messaging.** One run cannot message another run's
   stages, so harnesses do not learn about each other. A harness waiting on
   another issue stays paused until the outside manager resumes it with the

@@ -8,13 +8,15 @@ simple issues with checkable criteria, with train review behind it.
 
 ## What it is
 
-One tab named for the issue, split in two:
+Two hc terminals named for the issue (`fleet.name`), side by side in one
+GUI tab named for the issue:
 
-- **Top pane, the writer:** `agent --model composer-2.5 -f`. It
-  edits, runs the repository's checks and commits in a branch clone.
-- **Bottom pane, the reviewer:** `agent --model grok-4.7-xhigh -f`,
-  a different model line from the writer. It writes one report and edits
-  nothing else.
+- **The writer** (role `pair-writer`): `agent --model composer-2.5 -f`.
+  It edits, runs the repository's checks and commits in a branch clone.
+- **The reviewer** (role `pair-reviewer`): `agent --model
+  grok-4.7-xhigh -f`, a different model line from the writer. It joins
+  the writer's GUI tab through the `herdr.tab` label. It writes one
+  report and edits nothing else.
 - **You are the orchestrator.** You send the writer its round, then the
   reviewer its round, read each report and decide what comes next, for up
   to three rounds. The user can watch both agents work and read every
@@ -52,15 +54,21 @@ scripts/pair.sh open --issue TUS-36 --brief /path/to/TUS-36.md
 ```
 
 It checks the clearance and the load, makes the clone with `git bc-add`,
-opens the tab, starts both agents (answering Cursor's trust question for
-the new checkout) and sends the writer round 1. It prints `tab`,
-`writer_pane`, `reviewer_pane`, `clone` and `base`. Report the launch once
-the writer pane is `working`.
+opens the two terminals, starts both agents (answering Cursor's trust
+question for the new checkout) and sends the writer round 1 with
+`hc send`. It prints `tab` (the GUI tab), `writer_pane` and
+`reviewer_pane` (the two terminals' hc addresses), `clone` and `base`.
+Report the launch once the writer is `working`. `--space` is the fleet's
+GUI space when you cannot default it (`--workspace` is the old name).
 
 ## The loop
 
 `scripts/status.sh` shows the pair as one row, and `scripts/watch.sh`
-fires each time both agents come to rest. Then:
+fires each time both agents come to rest. Not yet verified: whether hc
+reports a Cursor agent's status at all. hc takes status from the OSC 7501
+reports an agent emits; if Cursor's `agent` emits none, the pair's state
+words mean nothing, so read both terminals (`hc read <t> --lines 0`)
+before trusting them. Then:
 
 ```bash
 scripts/pair.sh status --issue TUS-36     # ends with next=...
@@ -73,8 +81,8 @@ scripts/pair.sh status --issue TUS-36     # ends with next=...
 | `write` | Read `round-N-review.md`, then `scripts/pair.sh write --issue TUS-36`. |
 | `land` | Approved, tree clean, gate passed: put it on a train. |
 | `hand over ...` | Three rounds used and still not approved: see below. |
-| `read the writer's pane` / `read the reviewer's pane` | The agent stopped without its report or verdict. Read the pane and answer it inside the round: `scripts/pair.sh say --issue TUS-36 --to writer --note "..."`. A Cursor writer often ends its turn with its gate still running in the background; tell it to poll the log to the end. |
-| `reopen ...` | An agent has left its pane. Close the tab and run the command it names; the round files carry the history. |
+| `read the writer's terminal` / `read the reviewer's terminal` | The agent stopped without its report or verdict. Read the terminal and answer it inside the round: `scripts/pair.sh say --issue TUS-36 --to writer --note "..."`. A Cursor writer often ends its turn with its gate still running in the background; tell it to poll the log to the end. |
+| `reopen ...` | An agent has left its terminal. Close both terminals (`hc kill`, `hc rm`) and run the command it names; the round files carry the history. |
 
 Read the report before sending the next prompt: you are the one deciding,
 and the reviewer's word is not yours. `--note "..."` adds your own
@@ -84,7 +92,7 @@ sends the writer back after an approval you do not accept.
 ## Prompts and files
 
 Cursor folds a typed prompt longer than about 500 characters into
-`[Pasted text]`, which cannot be read in the pane. So each prompt is two
+`[Pasted text]`, which cannot be read in the terminal. So each prompt is two
 or three sentences naming files, and the standing rules live in the clone.
 `pair.sh` prints `chars=` for each prompt and warns when a note pushes it
 over.
@@ -95,11 +103,12 @@ Everything is in `<clone>/.atomic/pair/`:
 - `writer-rules.md`, `reviewer-rules.md`: the standing rules, including
   the landing gate as the writer's last step when the seed has one.
 - `round-N-writer-prompt.md`, `round-N-review-prompt.md`: exactly what was
-  typed into each pane.
+  typed into each terminal.
 - `round-N-writer.md`: the writer's report. `gate-N.log`: its gate run.
 - `round-N-review.md`: the reviewer's findings, ending `VERDICT: APPROVED`
   or `VERDICT: CHANGES_REQUESTED`.
-- `pair.env`: the panes, the clone, the base and the models.
+- `pair.env`: the GUI tab, the two terminals, the clone, the base and
+  the models.
 
 Copy the directory somewhere safe before removing the clone if you want
 the review record kept.
@@ -117,8 +126,9 @@ allowed only when that review leaves a P0 or P1 open:
 
 Exactly as for an Atomic harness: stack in the staging clone, run the
 gate, land, hand to the QA agent. Tell the QA agent the work came from
-this pair, so it reads the diff with that in mind. `scripts/cleanup.sh`
-closes the tab, which ends both agents.
+this pair, so it reads the diff with that in mind.
+`scripts/cleanup.sh --terminal <t>` closes one terminal; close the other
+with `hc kill <t>` and `hc rm <t>` (both addresses are in `pair.env`).
 
 ## Things that go wrong
 
@@ -134,9 +144,9 @@ closes the tab, which ends both agents.
   repository whose hook rejects attribution trailers needs that setting
   false, or the writer finishes with everything staged and nothing
   committed.
-- **A prompt that does not start the agent.** `pair.sh` waits for the pane
-  to go `working` and fails if it does not; read the pane before sending
-  anything else.
+- **A prompt that does not start the agent.** `pair.sh` waits for the
+  terminal to go `working` and fails if it does not; read it
+  (`hc read <t>`) before sending anything else.
 - **Another harness left the work unfinished.** Start a pair on its clone:
   `scripts/pair.sh open --issue ID --clone DIR --brief FILE --note "..."`.
   The work stays; say in the note what state it is in.
@@ -144,9 +154,9 @@ closes the tab, which ends both agents.
 ## The unattended loop
 
 `scripts/launch-composer-grok.sh --issue ID --brief FILE` runs the same
-two models headless in one pane: writer, reviewer, up to three rounds,
-with no prompts from you. Use it only when no fleet manager session will
-be there for the handoffs.
+two models headless in one terminal (role `composer-grok`): writer,
+reviewer, up to three rounds, with no prompts from you. Use it only when
+no fleet manager session will be there for the handoffs.
 
 - State is in `<clone>/.atomic/composer-grok/`: `result.md` (outcome,
   commits, tokens), `round-N-review.md`, `round-N-writer.log`,
@@ -157,6 +167,8 @@ be there for the handoffs.
 - Each turn streams its events to `round-N-writer.jsonl` or
   `round-N-reviewer.jsonl`, and once a minute the status line shows what
   the turn is doing: `running: <command> (Nm)`, `last: <action>`, or
-  `silent Nm, no command running`, which reports the pane blocked so the
-  watcher fires. `scripts/cursor-stream.py summary|text|usage FILE` reads
+  `silent Nm, no command running`, which reports the terminal blocked so
+  the watcher fires. The driver reports its state through a `fleet.state`
+  label on its terminal, which `status.sh` reads, since hc does not know
+  it as an agent. `scripts/cursor-stream.py summary|text|usage FILE` reads
   a stream file by hand.

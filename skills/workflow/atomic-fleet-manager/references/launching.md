@@ -19,30 +19,44 @@
    scripts/launch.sh --issue TUS-150 --tier complex --writer anthropic/claude-opus-5-5:xhigh
    ```
 
-   The script creates the tab, starts `atomic`, submits the `/workflow`
-   command with `key=value` inputs so no picker opens, and prints `tab`,
-   `pane`, `run_id`, `policy` and `state`. Run it once per issue, in
-   sequence, so clones are not created concurrently. Add `--resolve-only`
-   to preview the models and clone path without starting any work.
+   The script opens an hc terminal named for the issue with
+   `hc run --bg --parent <your terminal> --outlive-parent --no-notify
+   --keep`, so the GUI lists it under your `FM` terminal, it outlives you
+   and the script, and it keeps a shell if Atomic exits. Never drop
+   `--outlive-parent`: a child otherwise ends when its parent's program
+   does, and a manager session that exits would stop every run. A nested
+   harness is told apart by its `fleet.name` label, not by a tab name.
+   `FLEET_NEST=0`, a remote machine, or a launch through `hc exec` gives
+   it a tab of its own, named for the issue, as before. It starts `atomic`, submits the `/workflow` command with `key=value`
+   inputs so no picker opens, and prints `terminal` (its hc address; `tab`
+   and `pane` repeat it for older callers), `run_id`, `policy`, `tier` and
+   `state`. Run it once per issue, in sequence, so clones are not created
+   concurrently. Add `--resolve-only` to preview the models and clone path
+   without starting any work. Through `hc exec`, where there is no
+   `HC_TERMINAL_ID`, pass `--space <space id>` (`--workspace` is the old
+   name).
 5. **Verify each launch.** A harness counts as running when the script
-   printed a `run_id`, the pane's state is `atomic working`, and the clone
-   `<seed>.goal-<issue>-<hash>` exists beside the seed about a minute
-   later. `scripts/status.sh` lists every Atomic pane in the workspace with
-   its progress line.
+   printed a `run_id`, the terminal's state is `atomic working`, and the
+   clone `<seed>.goal-<issue>-<hash>` exists beside the seed about a minute
+   later. `scripts/status.sh [SPACE_ID]` lists every agent terminal of
+   the fleet, one row each: name, hc address, status and progress, read
+   from each Atomic terminal's screen (`hc read <t> --lines 0`).
 6. **Update the tracker.** Move the issue to its started state only after
    step 5 passes, then read the returned status; a save can return without
    applying, so retry until the status reads started.
-7. **Report the roster**: issue, tab, clone, policy, run id and state for
-   every harness, plus anything started against an unmet blocker.
+7. **Report the roster**: issue, terminal, clone, policy, run id and
+   state for every harness, plus anything started against an unmet
+   blocker.
 
-When `launch.sh` fails after creating a tab, read that pane before
-retrying, and reuse or report the tab instead of creating a second one.
+When `launch.sh` fails after opening a terminal, read it
+(`hc read <t> --lines 0`) before retrying, and reuse or report the
+terminal instead of opening a second one.
 
 ## A harness under a second account
 
 `launch.sh --agent-dir DIR` runs the harness under another Atomic agent
 directory, which holds its own provider logins: a second subscription
-whose allowance the user wants used. The tab gets
+whose allowance the user wants used. The terminal gets
 `ATOMIC_CODING_AGENT_DIR`, and Atomic starts with `ANTHROPIC_API_KEY`
 unset so the directory's login is the one used.
 
@@ -86,16 +100,17 @@ scripts/launch.sh --issue TUS-144 --tier simple --writer zai/glm-5.3:max \
 
 ## Steering a running harness
 
-Send the instruction to the Atomic session in that issue's tab, in plain
-language: name the run id, state every ruling in one message as numbered,
-self-contained instructions, ask for delivery to the run's orchestrator,
-and ask it to wait for the orchestrator's acknowledgement. A message
-interrupts the stage that receives it, so send one message per decision.
-Read the pane until the acknowledgement appears, then relay what was
+Send the instruction to the Atomic session in that issue's terminal, in
+plain language: name the run id, state every ruling in one message as
+numbered, self-contained instructions, ask for delivery to the run's
+orchestrator, and ask it to wait for the orchestrator's acknowledgement.
+A message interrupts the stage that receives it, so send one message per
+decision.
+Read its screen until the acknowledgement appears, then relay what was
 acknowledged, including anything the orchestrator added.
 
 ```bash
-herdr pane send-text <pane> "<instruction>" && herdr pane send-keys <pane> Enter
+hc send <t> "<instruction>"
 ```
 
 When a ruling changes scope or acceptance, ask for it to be broadcast to
@@ -121,7 +136,7 @@ scripts/clear.sh --issue TUS-58 \
 ```
 
 The last three lines are the work-in-progress limit. Count from the
-tracker now, not from the tab list:
+tracker now, not from the terminal list:
 
 - `--in-progress`: issues started and not Done (In Progress plus In
   Review), not counting this one.
@@ -170,7 +185,7 @@ Before every launch, for each "reuse X" or "build on X" in the brief:
 
 When a running unit reports an "ownership blocker", read its checkpoint
 for the exact files, check nobody else holds them, and grant them in its
-pane as an authoritative ruling that names the earlier denial it
+terminal as an authoritative ruling that names the earlier denial it
 supersedes. Leave a gate that is running to finish.
 
 

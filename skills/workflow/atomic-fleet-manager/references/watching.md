@@ -12,24 +12,33 @@ Run this as a background command (in Claude Code, the Bash tool with
 scripts/watch.sh
 ```
 
-It polls `scripts/status.sh` every 60 seconds and exits when the set of
-agent tabs differs from what it saw at start. That set is every pane in
-the workspace that holds an agent, except your own: harnesses, the QA
-agent, and any agent you start by hand in a tab of any name (a one-off
-reviewer, for example). Until 2026-10-08 only Atomic panes and the tab
-labeled `QA` were listed, so a one-off QA agent in a tab called `QA-FABLE`
-finished unnoticed. On exit
-it prints the lines that changed (`was:` and `now:`) and the full status.
-The harness that runs you delivers that exit as a notification, which
-starts your next turn.
+It follows Herdr Core's events and reads `scripts/status.sh`, and exits
+when the set of agent terminals differs from what it saw at start. That
+set is every terminal of the fleet that holds an agent, except your own:
+harnesses, the QA agent, and any agent you start by hand under any name
+(a one-off reviewer, for example). A fleet terminal carries the fleet's
+`herdr.space` label or its `fleet.project` label, on this machine or
+another. A terminal opened by hand joins with
+`hc label <t> fleet.name=<NAME> fleet.role=<role> fleet.project=<project>`;
+`status.sh` also lists unlabelled agent terminals in the space, named
+from their GUI tab. A terminal on another machine shows in the GUI under
+that machine's space of the same id, but keeps the bare `herdr.space`
+label, so status and watch still find it from here. Until 2026-10-08
+only Atomic harnesses and the agent labeled `QA` were listed, so a
+one-off QA agent called `QA-FABLE` finished unnoticed. On exit it prints
+the lines that changed (`was:` and `now:`) and the full status. The
+harness that runs you delivers that exit as a notification, which starts
+your next turn.
 
-Options: `--interval SECONDS`, `--timeout SECONDS` (exit with `NO CHANGE`
-after that long), `--workspace ID`.
+Options: `--interval SECONDS` (the fallback poll, default 60),
+`--timeout SECONDS` (exit with `NO CHANGE` after that long),
+`--space ID` (`--workspace` is the old name; needed through `hc exec`).
 
 ## When it wakes you
 
-1. Read the `was:` and `now:` lines to see which tabs changed.
-2. Read each changed pane; a status word is not the story. `working` to
+1. Read the `was:` and `now:` lines to see which terminals changed.
+2. Read each changed terminal (`hc read <t> --lines 0`); a status word
+   is not the story. `working` to
    at-rest can mean finished, paused itself, or failed.
 3. Act: land a train, resume a waiting harness, relay a question, hand a
    train to QA, clean up after a verdict.
@@ -37,31 +46,32 @@ after that long), `--workspace ID`.
 
 ## What counts as a change
 
-- A tab moving between `working`, `blocked` and at-rest.
-- A harness tab appearing (you launched one) or disappearing (you closed
-  one). Launching or closing tabs while a watcher is running therefore
-  wakes it; arm it after the batch, not before.
+- A terminal moving between `working`, `blocked`, `error` and at-rest.
+- A harness terminal appearing (you launched one) or disappearing (you
+  closed one). Launching or closing terminals while a watcher is running
+  therefore wakes it; arm it after the batch, not before.
 - `idle` and `done` are both at-rest and do not count as different.
-- The QA tab starting work. Handing a train to QA while a watcher is
+- The QA terminal starting work. Handing a train to QA while a watcher is
   running wakes it at once, so hand over first and arm the watcher after.
 
 ## Pitfalls met in practice
 
-- **The watcher hears Herdr's agent events.** It subscribes to
-  `pane.agent_status_changed` on Herdr's socket for every pane in the
-  workspace (`scripts/herdr-wait.py`), so a tab that stops or blocks is
-  reported within seconds: a Cursor writer or reviewer ending its turn, an
-  Atomic run ending or pausing. Its output names what woke it
-  (`trigger: EVENT <pane> <state>` or `trigger: poll`). The 60-second poll
-  remains for what Herdr does not announce: a tab opening or closing, and a
-  headless harness writing its result.
-- **Starting is reported late on purpose.** A tab that begins working is
-  reported only after it has stayed working for the interval, so a harness
-  answering a ping does not wake you twice.
+- **The watcher hears Herdr Core's events.** It follows `hc events`
+  (one JSON stream: a snapshot, then created, labels, status and finished
+  events) for every fleet terminal on any machine, so a terminal that
+  appears, ends, stops or blocks is reported within seconds: a Cursor
+  writer or reviewer ending its turn, an Atomic run ending or pausing.
+  Its output names what woke it (`trigger: EVENT <type> <terminal>
+  <state>` or `trigger: poll`). The 60-second poll remains for what no
+  event announces: a run that pauses or quits inside a terminal that stays
+  at rest, and a headless harness writing its result.
+- **Starting is reported late on purpose.** A terminal that begins
+  working is reported only after it has stayed working for the interval,
+  so a harness answering a ping does not wake you twice.
 - **A paused or quit run is `blocked`.** `scripts/status.sh` reads the
   Atomic panel: a run held paused after a failed stage, or one that was
   quit, shows as `blocked` with `run paused, resume it`. Resume it as soon
-  as the load allows; do not read a tab at rest as a finished run.
+  as the load allows; do not read a terminal at rest as a finished run.
 - **One watcher at a time.** A second one doubles every notification. If
   one is already running when you want different options, let it fire or
   stop it first.
@@ -75,7 +85,8 @@ after that long), `--workspace ID`.
   silence from the watcher means nothing changed, not that it died. To
   check on it without waiting, run `scripts/status.sh`.
 - **Do not poll in the foreground.** Sleeping in the main turn blocks the
-  user; let the background command do the waiting.
+  user; let the background command do the waiting. For one terminal,
+  `hc wait <t>` replaces a sleep loop.
 
 ## Watch the load too
 
@@ -102,12 +113,17 @@ after that long), `--workspace ID`.
   when a step fails:
   1. `scripts/resume.sh --issue ID`: the same run, in its own session.
   2. `scripts/resume.sh --issue ID --fresh`: the same run from a new Atomic
-     process, for a dead session or a stale login. Close the old tab first;
+     process, in a new terminal, for a dead session or a stale login.
+     Close the old terminal first (`hc kill <t>`, `hc rm <t>`);
      Atomic hands a run to another process only after its owner has been
      silent for two minutes, and the script refuses until then.
   3. A new run with `launch.sh --checkout`, whose objective names the
      commits already reviewed and limits review to what changed since. Say
      in the report why 1 and 2 failed.
+- `resume.sh` finds the issue's terminal by name through `status.sh`,
+  leaves Atomic's graph view with `hc keys <t> ctrl+x`, sends with
+  `hc send` and prints `terminal=` and `pane=`. Through `hc exec`, pass
+  `--space`.
 - `scripts/resume.sh --issue ID --status` prints the run's recorded state
   (`failed`, `blocked`, `paused`, `crashed`, `running`, `completed`), its
   latest stage and its error, from Atomic's workflow database.
@@ -116,7 +132,7 @@ after that long), `--workspace ID`.
 - Since Atomic 0.9.27 a pause is held in the owning process and the
   stage, not in the run's recorded status, so `--status` reports a paused
   run as `running` (owner alive) or `crashed` (owner gone). For a pause,
-  trust the pane's `/workflow status`; resume it in its own session.
+  trust the terminal's `/workflow status`; resume it in its own session.
 - A stage that fails on infrastructure (since Atomic 0.9.38 a typed
   `StorageUnavailableError` or `StageRehydrationError` from the SQLite
   workflow journal; before that, Postgres health checks) leaves the run
@@ -124,10 +140,10 @@ after that long), `--workspace ID`.
   `1 paused` and a resume is refused as "already running in this
   session". `resume.sh` sees the refusal, sends `/workflow quit <run>`
   (which keeps the run resumable) and resumes again. A task view left
-  open in the pane swallows typed text; if nothing appears in the chat,
-  close the view before sending again.
-- A tab at rest is not a finished run. After a load spike, read the panel:
-  `paused` with no stage activity means the run needs a resume.
+  open in the terminal swallows typed text; if nothing appears in the
+  chat, close the view before sending again.
+- A terminal at rest is not a finished run. After a load spike, read the
+  panel: `paused` with no stage activity means the run needs a resume.
 - A provider usage limit needs the user to log in to another account before
   any resume.
 - `blocked` on resume means the goal ledger holds a decision that closes
@@ -136,21 +152,22 @@ after that long), `--workspace ID`.
 ## A watcher's "stalled" report is true until you prove it false
 
 - A supervising chat at rest is not proof either way. While its workflow
-  runs in the background the pane lists the run in a BACKGROUND box, on a
-  line of the form `●  <run id>`. That line is the test of life.
-- When a watcher reports a run stalled (ledger `active`, pane at rest),
-  read the pane for that line and the run folder for its last write. No
-  box and no write in ten minutes means the run is dead: a review that
-  ended the work without closing the ledger looks exactly like this.
-- Have the watcher make the check itself, and always give it the pane. A
-  watcher that reads the ledger alone cannot see a run that stopped with
-  its ledger still `active`.
-- The run id also appears in a dead run's pane, in intercom lines. Match
-  the box line, not the id alone.
+  runs in the background its terminal lists the run in a BACKGROUND box,
+  on a line of the form `●  <run id>`. That line is the test of life.
+- When a watcher reports a run stalled (ledger `active`, terminal at
+  rest), read its screen for that line and the run folder for its last
+  write. No box and no write in ten minutes means the run is dead: a
+  review that ended the work without closing the ledger looks exactly
+  like this.
+- Have the watcher make the check itself, and always give it the
+  terminal. A watcher that reads the ledger alone cannot see a run that
+  stopped with its ledger still `active`.
+- The run id also appears in a dead run's terminal, in intercom lines.
+  Match the box line, not the id alone.
 - One fleet manager called a true report false, re-armed the watcher on
   the ledger alone, and left an unfinished unit idle for two hours.
 
-## "Command aborted" in a harness pane
+## "Command aborted" in a harness terminal
 
 Atomic delivers a message to a busy stage by aborting the command that
 stage has in the foreground. An orchestrator waiting on its writer with
@@ -170,25 +187,25 @@ that instance read the wrong bytes later. Write the new version beside it
 and rename it over the old name (`mv -f name.new name`); running
 instances keep the old file, new launches get the new one.
 
-## A pane that starts its own follow-up run
+## A terminal that starts its own follow-up run
 
-When a run ends at its round limit, the Atomic session in the pane is told the run has completed, and it may decide to start another run in the same clone to fix what the reviewers left. The pane never comes to rest, so its agent status never changes.
+When a run ends at its round limit, the Atomic session in the terminal is told the run has completed, and it may decide to start another run in the same clone to fix what the reviewers left. The terminal never comes to rest, so its agent status never changes.
 
-`launch.sh` records the run each pane was launched with in `~/.local/state/atomic-fleet/launched.tsv` (pane, issue, run id, time). `status.sh` compares that with the run the pane's BACKGROUND panel shows and reports the row `blocked` with `unexpected run <id>, launched with <id>`, which wakes the watcher.
+`launch.sh` records the run each terminal was launched with in `~/.local/state/atomic-fleet/launched.tsv` (terminal, issue, run id, time). `status.sh` compares that with the run the terminal's BACKGROUND panel shows and reports the row `blocked` with `unexpected run <id>, launched with <id>`, which wakes the watcher.
 
 - Read the first run's `goal-ledger.json` (`status` is `handover`) and the new run's inputs in the workflow database before deciding. Check the writer, the review tier and the clone are the ones you chose, and read what the reviewers left.
-- If it is the fix pass you would have launched, let it finish, tell the pane to start no further run, and accept the run by appending a line for it to the launch log.
-- If what is left does not merit a pass (no crash, an edge no client reaches, a demand to preserve an accident), tell the pane to quit the run, land the last gated commit, and give the reviewer's open findings to QA to rule on.
+- If it is the fix pass you would have launched, let it finish, tell the terminal to start no further run, and accept the run by appending a line for it to the launch log.
+- If what is left does not merit a pass (no crash, an edge no client reaches, a demand to preserve an accident), tell the terminal to quit the run, land the last gated commit, and give the reviewer's open findings to QA to rule on.
 - The launch note tells the session to report and stop when its run ends. A session can still ignore it; the comparison above is the safeguard.
 
 ## Stopping a run on purpose, and draining for a restart
 
 `auto-resume.sh` restarts a run that has quit. That is its job, so it also undoes a stop you ordered: a run told to quit with a clean tree was resumed half a minute later and its writer worked on.
 
-- Stop the `auto-resume.sh` task first. Then give the order in the pane. Then read the pane and run `git status` in the clone before you say the run has stopped.
+- Stop the `auto-resume.sh` task first. Then give the order in the terminal. Then read its screen and run `git status` in the clone before you say the run has stopped.
 - To drain the whole fleet (the owner needs the machine): the resumer, then the runs, then trains (a gate in its last stage is worth letting finish; land it if green), then the other watchers, helpers and the QA seat. Start nothing new.
 - A writer cut off mid-turn leaves uncommitted work. Leave it in the clone, save the same diff as a patch outside it, and write the relaunch objective so that the next writer treats it as an unfinished draft.
 - Look for stragglers by working directory, not by name: a process whose directory is a fleet clone is yours; an Atomic session in another project is not.
 - A restart empties `/private/tmp`: the session scratchpad, rehearsal clones and gate locks go. Save what is wanted (a rehearsed fix as a patch, helper scripts) under the fleet folder first.
-- Write the restart list at the top of the handover, in order: services, the tracker's and the seed's state to verify, the terminal multiplexer's new ids, watchers, the QA seat, each paused unit with its exact relaunch command. Give the owner a one-line prompt that points at it.
+- Write the restart list at the top of the handover, in order: services, the tracker's and the seed's state to verify, the hc terminal addresses, watchers, the QA seat, each paused unit with its exact relaunch command. Give the owner a one-line prompt that points at it.
 

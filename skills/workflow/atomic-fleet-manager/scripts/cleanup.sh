@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Remove a landed harness: verify every commit in its clone is on the seed's
-# remote default branch, then drop its test database, close its tab and remove
-# the clone. Refuses, changing nothing, if any commit is not landed.
+# remote default branch, then drop its test database, close its terminal and
+# remove the clone. Refuses, changing nothing, if any commit is not landed.
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: cleanup.sh --clone DIR [--tab ID] [--seed DIR] [--remote-branch REF] [--db-drop CMD]
+Usage: cleanup.sh --clone DIR [--terminal T] [--seed DIR] [--remote-branch REF] [--db-drop CMD]
 
   --clone DIR          Branch clone to remove
-  --tab ID             Herdr tab to close (optional)
+  --terminal T         hc terminal to close: kill its program and remove it
+                       (optional; --tab is the old name)
   --seed DIR           Seed checkout (default: current directory)
   --remote-branch REF  Where landed work lives (default: origin/main)
   --db-drop CMD        Command run inside the clone to drop its test
@@ -26,7 +27,7 @@ clone="" tab="" seed="$PWD" remote="origin/main" db_drop="pnpm db:test:drop"
 while [ $# -gt 0 ]; do
   case "$1" in
     --clone) clone="$2"; shift 2 ;;
-    --tab) tab="$2"; shift 2 ;;
+    --terminal|--tab) tab="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
     --remote-branch) remote="$2"; shift 2 ;;
     --db-drop) db_drop="$2"; shift 2 ;;
@@ -81,7 +82,8 @@ if [ -n "$db_drop" ]; then
   (cd "$clone" && $db_drop >/dev/null 2>&1) || echo "Warning: '$db_drop' failed in the clone." >&2
 fi
 if [ -n "$tab" ]; then
-  herdr tab close "$tab" >/dev/null 2>&1 || echo "Warning: could not close tab $tab." >&2
+  hc kill "$tab" >/dev/null 2>&1 || true
+  hc rm "$tab" >/dev/null 2>&1 || echo "Warning: could not remove terminal $tab." >&2
 fi
 git bc-rm "$clone" -y 2>&1 | tail -1
 echo "CLEANED: $clone"

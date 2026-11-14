@@ -52,13 +52,13 @@ started=$(date +%s)
 report() { # state message
   local elapsed=$(( ($(date +%s) - started) / 60 ))
   echo "composer-grok · $2 · ${elapsed}m"
-  if [ "${HERDR_ENV:-}" = 1 ] && [ -n "${HERDR_PANE_ID:-}" ]; then
-    herdr pane report-agent --source composer-grok --agent composer-grok \
-      --state "$1" --message "$2" "$HERDR_PANE_ID" >/dev/null 2>&1 || true
+  # status.sh reads this label: hc does not know the driver as an agent.
+  if [ -n "${HC_TERMINAL_ID:-}" ] && command -v hc >/dev/null; then
+    hc label "$HC_TERMINAL_ID" "fleet.state=$1" >/dev/null 2>&1 || true
   fi
 }
 
-finish() { # herdr-state outcome detail
+finish() { # fleet-state outcome detail
   {
     echo "# $issue: composer-grok result"
     echo

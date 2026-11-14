@@ -101,7 +101,7 @@ open` and the row's `--writer` and `--reviewer`. Its shape matches the
 tiers (one writer, one reviewer, three rounds).
 
 **One pair at a time.** From `pair.sh open` until its issue is Done and
-its tab is closed, every other issue goes to the tier's Atomic rows.
+its terminals are closed, every other issue goes to the tier's Atomic rows.
 `pair.sh open` refuses a second pair.
 
 ### A second account as one more writer for small units

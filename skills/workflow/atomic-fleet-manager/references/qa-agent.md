@@ -1,6 +1,6 @@
 # The QA agent
 
-One reviewing agent per project, in its own Herdr tab labeled `QA`. It is
+One reviewing agent per project, in its own hc terminal named `QA`. It is
 the last check before an issue is called done and the only reviewer that
 sees several issues together. Use the strongest model available for it:
 the volume is one review per train, and it has caught defects that a
@@ -8,15 +8,22 @@ harness's own reviewers approved.
 
 ## Start it
 
-Skip this when a tab labeled `QA` already holds a live agent; send it the
-standing brief instead if it has not had one.
+Skip this when a terminal named `QA` already holds a live agent
+(`scripts/status.sh` lists it); send it the standing brief instead if it
+has not had one.
 
 ```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd <seed> --label QA --no-focus
-herdr agent start qa --kind claude --pane <root pane id> -- \
-  --model claude-fable-5-2 --effort medium --name QA
-herdr agent prompt qa "<standing brief>" --wait --timeout 120000
+. scripts/fleet-hc.sh
+qa="$(fleet_open QA qa <seed> -- \
+  claude --model claude-fable-5-2 --effort medium --name QA "<standing brief>")"
+fleet_name_tab "$qa" QA
 ```
+
+`fleet_open` opens an hc terminal in the fleet's GUI space with the
+labels `fleet.name=QA` and `fleet.role=qa`, outliving your own; it prints
+the terminal's address. The brief goes in the run as the first message,
+since a send to a booting agent can be dropped. `fleet_name_tab` names its
+GUI tab `QA`. Later prompts go with `hc send "$qa" "..."`.
 
 - Model and effort are the user's to change; these are the defaults
   (since 2026-11-12, on Anthropic's recommendation: Fable 5.2 at medium,
@@ -32,7 +39,7 @@ herdr agent prompt qa "<standing brief>" --wait --timeout 120000
   file first (`.atomic/fleet/qa-handover.md`: live stack, scripts,
   conventions, counts, open findings) and keep its probe scripts under
   `.atomic/fleet/qa-scripts/`; brief the successor to read both.
-- Start it in the permission mode the user's other agents in this workspace
+- Start it in the permission mode the user's other agents in this fleet
   use. Do not add a permission-bypass flag on your own; ask once if the
   mode is unclear, since the QA agent runs test suites and browsers.
 - Run `claude --help` when a flag is rejected; the CLI is the authority.
@@ -43,7 +50,7 @@ Send this once, adapted to the project (seed path, tracker, check
 commands). Keep it as one message.
 
 ```text
-You are the QA reviewer for <project>. The fleet manager (the FM tab) orchestrates a fleet of
+You are the QA reviewer for <project>. The fleet manager (the FM terminal) orchestrates a fleet of
 Atomic harnesses and lands their finished work on the seed (<seed path>) in
 batches called trains. You review each train after it lands and is pushed.
 
@@ -73,7 +80,7 @@ verdicts.
 ## Hand over a train
 
 ```bash
-herdr agent prompt qa "Train <n> has landed and is pushed: <base>..<tip>. <hash> is <issue> (<what it does>); ... Checks on the combined tip before landing: <results>. Not run: <suites>. The issues are in review in <tracker>." 
+hc send "$qa" "Train <n> has landed and is pushed: <base>..<tip>. <hash> is <issue> (<what it does>); ... Checks on the combined tip before landing: <results>. Not run: <suites>. The issues are in review in <tracker>." 
 ```
 
 A prompt sent while the QA agent is working is queued and handled after
@@ -89,13 +96,15 @@ its current turn.
   sent back to QA (see "One QA review per piece of work").
 - **Design question:** bring it to the user with your recommendation.
 
-Read the QA agent's full output from its pane; a summary line is not the
-whole list of findings.
+Read the QA agent's full output from its terminal
+(`hc read "$qa" --lines N`); a summary line is not the whole list of
+findings.
 
 ## Reading the verdict
 
 - Read the QA agent's report from its session transcript, not from the
-  pane: the pane scrolls, truncates long reports and hides the first lines.
+  terminal's screen: the screen scrolls, truncates long reports and hides
+  the first lines.
 - Act only on an explicit verdict line and an explicit statement that it
   is finished with the seed working tree. If either is missing, ask for
   both in two labeled lines and wait.
@@ -188,12 +197,12 @@ staging clone while tidying before a handover.
 
 When the owner has a second Anthropic account with spare allowance, the QA seat can run as Claude Code under it, so reviews cost nothing from the account the fleet manager runs on.
 
-- Use the owner's own alias for that account (for example `claude-work`, which sets `CLAUDE_CONFIG_DIR` and the permission mode). Run it in the QA pane with `herdr pane run <pane> "<alias> --model <model> --effort <level> -n qa"`. `herdr agent start --kind claude` runs the plain executable and would use the first account.
-- A pane whose shell is older than the alias answers "command not found" with the whole line: source the aliases file in that pane first.
+- Use the owner's own alias for that account (for example `claude-work`, which sets `CLAUDE_CONFIG_DIR` and the permission mode). Run it in the QA terminal with `fleet_open QA qa <seed> -- <alias> --model <model> --effort <level>`. Starting plain `claude` uses the first account.
+- A terminal whose shell is older than the alias answers "command not found" with the whole line: source the aliases file in that terminal first.
 - The first start in a folder asks whether to trust it, with "No" selected. Read the banner afterwards: it names the model, the effort and the plan.
 - Give the seat a queue file, not a single handover, when several units wait: one entry for each unit with its range, handover, report path and a status cell the seat keeps current; tell it to finish an entry before starting the next and not to stop between entries. Collect findings in one section of that file.
 - A model line does not review its own work, and QA is a review. Put every unit the seat's own model wrote on hold in the queue and ask the owner who reviews those (another model on the same account, or a seat on another provider).
-- Watch the pane for the seat stopping, not for each entry: one wake at the end.
+- Watch the terminal for the seat stopping, not for each entry: one wake at the end.
 
 ## QA that fixes its own findings
 
