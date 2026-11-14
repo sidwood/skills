@@ -1,6 +1,6 @@
 ---
 name: technology-selection
-description: Use when comparing, choosing, or migrating technologies.
+description: Use when choosing, comparing or migrating tech or AI models.
 ---
 
 # Technology Selection
@@ -58,3 +58,7 @@ explicit condition that would reverse the decision.
 
 For evidence weighting across greenfield and incumbent targets, read
 [references/greenfield-vs-incumbent.md](references/greenfield-vs-incumbent.md).
+
+For choosing an LLM, its reasoning effort, or its speed tier (agent defaults,
+subagent routes, scheduled jobs), read
+[references/llm-models-and-effort.md](references/llm-models-and-effort.md).
