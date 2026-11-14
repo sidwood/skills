@@ -28,3 +28,19 @@ Tighten the chosen loop until practical:
 For nondeterministic failures, loop or stress the trigger and report the measured
 failure rate. A stable high failure rate can be a useful red signal even when a
 single run is not deterministic.
+
+## Resource lifecycle probes
+
+- List the exact test inventory before using substring filters when suites can
+  touch credentials or native state; a broad lifecycle filter can unexpectedly
+  select a Keychain fixture. Prefer exact tests or explicit safe-module filters.
+- Measure owned threads and open database descriptors immediately after repeated
+  in-process shutdowns; process exit conceals detached workers and retained stores.
+- Drive simultaneous starters through the production preparation path against a
+  fresh disposable installation; testing only socket binding misses migration and
+  backup races before singleton acquisition.
+- Probe followers with a socket that accepts but never answers health; successful
+  connection alone cannot prove safe reuse, and both connection and response waits
+  need deadlines.
+- Exercise canonical and short symlink paths separately; canonical lock identity
+  can exceed Unix socket address limits when reused as the wire address.
