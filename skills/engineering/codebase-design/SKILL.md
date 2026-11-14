@@ -101,3 +101,6 @@ Ask:
 
 For a concrete deepening, read [DEEPENING.md](DEEPENING.md). For alternative
 interfaces, read [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md).
+
+For SQLite read/decide/write boundaries, read
+[references/sqlite-transactions.md](references/sqlite-transactions.md).

@@ -89,6 +89,8 @@
     "RSTART",
     "rulebook",
     "safehouse",
+    "savepoint",
+    "savepoints",
     "setdefault",
     "ShellCheck",
     "sidwood",
