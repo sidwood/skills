@@ -250,7 +250,9 @@ approve a legacy layout continuation; it never authorizes a new clone.
 - Push fast-forward only, one deploy in flight, and never a push without a
   live CI watcher.
 - Treat an operator nudge about a settled lane or a red pipeline as a monitor
-  failure: fix the monitor, then answer.
+  failure: fix the monitor, then answer. A vanished transition whose exact
+  event ID is already swept must be ignored before pending lookup or requeue;
+  Herdr can briefly re-advertise a closed lane and otherwise duplicate a wake.
 - Capture before teardown, suffix re-reads, and read verdicts from the
   agent's own output. Never infer a verdict.
 - Report in plain five-year-old language, in bullets: the event, the action
