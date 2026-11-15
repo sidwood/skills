@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# A Cursor writer and a Cursor reviewer side by side in one GUI tab, driven
-# by the fleet manager one prompt at a time. Each is an hc terminal named for
-# the issue (fleet.name) with the role pair-writer or pair-reviewer. Every
-# prompt is typed into the agent's terminal and is short enough to be read
-# there in full; it names the
-# brief and the standing rules, which are files in the clone under
-# .atomic/pair/ beside a copy of each prompt and the agents' reports.
+# A writer and a reviewer in one GUI tab, driven by the fleet manager one
+# prompt at a time. The script opens one Herdr pane, splits it down, and
+# runs one agent in each half. Each is an hc terminal named for the issue
+# (fleet.name) with the role pair-writer or pair-reviewer. Every prompt is
+# typed into the agent's terminal and is short enough to be read there in
+# full; it names the brief and the standing rules, which are files in the
+# clone under .atomic/pair/ beside a copy of each prompt and the agents'
+# reports.
+#
+# --writer and --reviewer take LAUNCHER:MODEL, a bare model name (that means
+# the Cursor agent), or a launcher whose model is fixed. claude-work spends
+# the owner's own Claude account and is never a default: it runs only when
+# the command names it. Homebrew's `agent` is Grok Build, so Cursor is the
+# binary at PAIR_CURSOR_AGENT (default: ~/.local/bin/agent).
 set -euo pipefail
 
 usage() {
@@ -35,13 +42,21 @@ Usage: pair.sh open   --issue ID --brief FILE [options]
   --seed DIR         Seed checkout to clone from (default: current directory)
   --space ID         The fleet's GUI space (default: the caller's own;
                      --workspace is the old name)
-  --writer MODEL     Cursor model that writes (default: composer-2.5)
-  --reviewer MODEL   Cursor model that reviews (default: grok-4.7-xhigh)
+  --writer SPEC      Who writes (default: composer-2.5, the Cursor agent).
+                     cursor:MODEL, claude-work:MODEL, claude-glm, grok,
+                     grok:MODEL, or a bare model name (Cursor).
+  --reviewer SPEC    Who reviews (default: grok-4.7-xhigh, the Cursor agent).
+                     Same forms as --writer.
   --max-rounds N     Writer rounds allowed (default: 3)
+  --max-pairs N      How many pairs may be open at once (default: 2, or
+                     FLEET_MAX_PAIRS). The load check is separate.
   --max-workers N    Test workers an agent may use (default: 4)
   --max-load N       open refuses at or above this 1-minute load (default: 12)
 
-The writer and the reviewer must be different model lines.
+The writer and the reviewer must be different model families, compared
+across launchers: cursor:grok-4.7-xhigh and grok are the same family.
+claude-work is never chosen unless the command names it. QA is not a pane
+of this tab.
 USAGE
 }
 
@@ -50,7 +65,9 @@ fail() { echo "Error: $1" >&2; exit 1; }
 command="${1:-}"
 [ $# -gt 0 ] && shift
 issue="" brief="" note="" to="" clone="" seed="$PWD" workspace=""
-writer="" reviewer="" max_rounds="" max_workers="${FLEET_MAX_WORKERS:-4}" max_load=12
+writer="" reviewer="" max_rounds="" max_pairs="${FLEET_MAX_PAIRS:-2}"
+max_workers="${FLEET_MAX_WORKERS:-4}" max_load=12
+CURSOR_AGENT="${PAIR_CURSOR_AGENT:-$HOME/.local/bin/agent}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --issue) issue="$2"; shift 2 ;;
@@ -63,6 +80,7 @@ while [ $# -gt 0 ]; do
     --writer) writer="$2"; shift 2 ;;
     --reviewer) reviewer="$2"; shift 2 ;;
     --max-rounds) max_rounds="$2"; shift 2 ;;
+    --max-pairs) max_pairs="$2"; shift 2 ;;
     --max-workers) max_workers="$2"; shift 2 ;;
     --max-load) max_load="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -121,40 +139,163 @@ verdict_of() { # round
     tail -1 | grep -Eo 'APPROVED|CHANGES_REQUESTED' || true
 }
 
-# Type the prompt file into the agent's terminal and confirm the agent took it.
+# Type the prompt file into the agent's terminal.
+# hc send succeeding is delivery. Some agents, the Cursor reviewer included,
+# never report `working`, and waiting for that word failed every review.
 send() { # terminal file
-  local ack tries=0
+  local ack tries=0 state
   ack="$(hc send "$1" "$(cat "$2")" 2>&1)" || fail "could not prompt terminal $1: $ack"
   case "$ack" in *'"error"'*) fail "could not prompt terminal $1: $ack" ;; esac
-  while [ "$tries" -lt 15 ]; do
-    [ "$(pane_state "$1")" = working ] && return 0
-    sleep 2
-    tries=$((tries + 1))
-  done
-  fail "terminal $1 did not start working within 30 seconds; read it (hc read $1) before sending anything else."
-}
-
-# Start a Cursor agent in a new terminal of the pair and wait for its prompt.
-# Sets started to the terminal's address.
-start_agent() { # role model [tab]
-  local role="$1" model="$2" tab="${3:-}" screen trusted=0 tries=0 where=()
-  [ -z "$tab" ] || where=(--tab "$tab")
-  started="$(fleet_open "$issue" "$role" "$clone" --space "$workspace" ${where[@]+"${where[@]}"} -- \
-    env "VITEST_MAX_WORKERS=$max_workers" agent --model "$model" -f)" || fail "could not start the $role for $issue."
-  [ -n "$started" ] || fail "could not start the $role for $issue."
-  # Cursor asks to trust a checkout it has not seen before it takes a prompt.
-  while [ "$tries" -lt 30 ]; do
-    screen="$(fleet_read "$started" 40 || true)"
-    case "$screen" in
-      *"Plan, search, build"*|*"Add a follow-up"*) return 0 ;;
-      *"Trust this workspace"*)
-        [ "$trusted" = 1 ] || hc keys "$started" a >/dev/null
-        trusted=1 ;;
+  while [ "$tries" -lt 5 ]; do
+    state="$(pane_state "$1")"
+    case "$state" in
+      working) return 0 ;;
+      error) fail "terminal $1 reported an error after the prompt; read it (hc read $1)." ;;
+      unknown|none) return 0 ;;
     esac
     sleep 2
     tries=$((tries + 1))
   done
-  fail "the $role did not reach its prompt in terminal $started."
+}
+
+# SPEC is launcher:model, a bare model name (Cursor), or a launcher with a
+# fixed model. Sets seat_launcher and seat_model. claude-work is not a
+# default: a bare name is the Cursor agent.
+parse_seat() { # spec
+  local spec="$1"
+  case "$spec" in
+    cursor:*) seat_launcher=cursor; seat_model="${spec#cursor:}" ;;
+    claude-work:*) seat_launcher=claude-work; seat_model="${spec#claude-work:}" ;;
+    claude-glm:*) seat_launcher=claude-glm; seat_model="${spec#claude-glm:}" ;;
+    claude-glm) seat_launcher=claude-glm; seat_model='glm-5.3[1m]' ;;
+    grok:*) seat_launcher=grok; seat_model="${spec#grok:}" ;;
+    grok) seat_launcher=grok; seat_model=grok-4.7 ;;
+    *:*) fail "unknown launcher in '$spec'." ;;
+    *) seat_launcher=cursor; seat_model="$spec" ;;
+  esac
+  [ -n "$seat_model" ] || fail "'$spec' needs a model."
+}
+
+# Family compared across launchers. cursor:grok-4.7-xhigh and grok match.
+model_family() { # model launcher
+  local name launcher="$2"
+  name="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$launcher" in
+    claude-glm) printf '%s\n' glm; return ;;
+  esac
+  case "$name" in
+    grok|grok-*) printf '%s\n' grok ;;
+    composer|composer-*) printf '%s\n' composer ;;
+    glm|glm-*) printf '%s\n' glm ;;
+    claude*|opus*|sonnet*|fable*|haiku*) printf '%s\n' claude ;;
+    *) printf '%s\n' "${name%%-*}" ;;
+  esac
+}
+
+# The command that starts this launcher. Sets seat_argv.
+#   cursor       ~/.local/bin/agent --model MODEL -f
+#                ready: "Plan, search, build" or "Add a follow-up"
+#                trust: "Trust this workspace" -> key a
+#                prompt: hc send (folds past about 500 characters)
+#   claude-work  CLAUDE_CONFIG_DIR=~/.claude-work claude --dangerously-skip-permissions --model MODEL
+#   claude-glm   CLAUDE_CONFIG_DIR=~/.claude-glm and the unknown-model override,
+#                claude --dangerously-skip-permissions --model "glm-5.3[1m]"
+#                ready: a line that is ❯
+#                trust: the chooser defaults to "No, exit" -> down, then enter
+#                prompt: hc send
+#   grok         grok --model MODEL --trust --permission-mode bypassPermissions
+#                ready: a line that is ❯
+#                trust: --trust, else "Trust this folder?" -> enter
+#                prompt: hc send
+build_seat() { # launcher model
+  local launcher="$1" model="$2" workers="VITEST_MAX_WORKERS=$max_workers"
+  case "$launcher" in
+    cursor)
+      [ -x "$CURSOR_AGENT" ] || fail "The Cursor agent is not at $CURSOR_AGENT. Homebrew's agent is Grok Build; do not use it."
+      "$CURSOR_AGENT" status 2>/dev/null | grep -q "Logged in" || fail "The Cursor agent at $CURSOR_AGENT is not logged in."
+      seat_argv=(env "$workers" "$CURSOR_AGENT" --model "$model" -f)
+      ;;
+    claude-work|claude-glm)
+      command -v claude >/dev/null || fail "claude is not on PATH."
+      if [ "$launcher" = claude-work ]; then
+        seat_argv=(env "CLAUDE_CONFIG_DIR=$HOME/.claude-work" "$workers" claude --dangerously-skip-permissions --model "$model")
+      else
+        seat_argv=(env "CLAUDE_CONFIG_DIR=$HOME/.claude-glm" CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 "$workers" claude --dangerously-skip-permissions --model "$model")
+      fi
+      ;;
+    grok)
+      command -v grok >/dev/null || fail "grok is not on PATH."
+      if grok models 2>&1 | grep -q "not authenticated"; then
+        fail "grok is not logged in."
+      fi
+      seat_argv=(env "$workers" grok --model "$model" --trust --permission-mode bypassPermissions)
+      ;;
+    *) fail "unknown launcher '$launcher'." ;;
+  esac
+}
+
+seat_ready() { # launcher screen
+  local launcher="$1" screen="$2"
+  case "$launcher" in
+    cursor)
+      case "$screen" in
+        *"Plan, search, build"*|*"Add a follow-up"*) return 0 ;;
+      esac
+      ;;
+    *)
+      if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*❯[[:space:]]*$'; then
+        return 0
+      fi
+      ;;
+  esac
+  return 1
+}
+
+# Wait until the agent can take a prompt, accepting its trust chooser once.
+wait_ready() { # terminal launcher role
+  local terminal="$1" launcher="$2" role="$3" screen trusted=0 tries=0
+  while [ "$tries" -lt 45 ]; do
+    screen="$(fleet_read "$terminal" 60 || true)"
+    # Accept a trust chooser before treating the screen as ready. Claude's
+    # chooser defaults to "No, exit", so it needs Down, then Enter.
+    if [ "$trusted" = 0 ]; then
+      case "$launcher" in
+        cursor)
+          case "$screen" in
+            *"Trust this workspace"*) hc keys "$terminal" a >/dev/null || true; trusted=1 ;;
+          esac
+          ;;
+        grok)
+          case "$screen" in
+            *"Trust this folder?"*) hc keys "$terminal" enter >/dev/null || true; trusted=1 ;;
+          esac
+          ;;
+        *)
+          case "$screen" in
+            *"No, exit"*|*"quick safety check"*) hc keys "$terminal" down enter >/dev/null || true; trusted=1 ;;
+          esac
+          ;;
+      esac
+      if [ "$trusted" = 1 ]; then
+        sleep 2
+        tries=$((tries + 1))
+        continue
+      fi
+    fi
+    if seat_ready "$launcher" "$screen"; then return 0; fi
+    sleep 2
+    tries=$((tries + 1))
+  done
+  fail "the $role did not reach its prompt in terminal $terminal."
+}
+
+wait_for_pane() { # terminal
+  local terminal="$1" pane="" tries=0
+  while [ -z "$pane" ] && [ "$tries" -lt 15 ]; do
+    pane="$(fleet_pane_of "$terminal")"
+    [ -n "$pane" ] || { sleep 1; tries=$((tries + 1)); }
+  done
+  printf '%s' "$pane"
 }
 
 # The standing rules live in two files in the clone, so the prompts typed into
@@ -174,7 +315,8 @@ write_rules() {
 Your brief is \`.atomic/pair/brief.md\`. Its acceptance criteria are the contract: do exactly what they require and nothing beyond. Read it and \`AGENTS.md\` in full before you change anything.
 
 - Work only inside this checkout (\`$clone\`), on its current branch. Never push, never open a pull request, never change the tracker, never touch another checkout.
-- Follow \`AGENTS.md\` for how to run commands and for commit messages: an imperative subject of at most 50 characters, a body that says why, no tracker issue number anywhere in the message, and no attribution or Co-authored-by trailer. The commit hook rejects trailers; never pass \`--no-verify\`.
+- Follow \`AGENTS.md\` for how to run commands and for commit messages: an imperative subject of at most 50 characters, a body that says why, and no tracker issue number anywhere in the message.
+- A commit message carries no trailer of any kind. No Co-Authored-By, no Co-authored-by, no Signed-off-by, no attribution. Claude adds Co-Authored-By unless you leave it out; do not add one. The commit hook rejects every trailer. Never pass \`--no-verify\`. If a commit fails for a trailer, rewrite the message without it and commit again.
 - Run the checks \`AGENTS.md\` names for the code you touch and fix what fails. This machine runs several agents at once: run suites one at a time and give any test runner at most $max_workers workers.
 - Before stating a command, path, port or name in code or documentation, confirm it exists in this repository. When you correct a mistake, search for the same mistake elsewhere and correct every instance the issue covers.
 - In a later round the reviewer's findings are in \`.atomic/pair/round-N-review.md\`. Address every finding, or say precisely why one is wrong.$gate_rule
@@ -186,7 +328,7 @@ EOF
   cat > "$state/reviewer-rules.md" <<EOF
 # Rules for the reviewer of $issue
 
-A different model wrote this work in the terminal beside yours. Do not edit, stage, commit or stash anything: the only file you write is your report.
+A different model wrote this work in the pane above yours. Do not edit, stage, commit or stash anything: the only file you write is your report.
 
 ## Read
 
@@ -204,7 +346,7 @@ A different model wrote this work in the terminal beside yours. Do not edit, sta
 4. The repository rules are followed.
 5. Every command, path, port and name the change states exists in the repository.
 6. A mistake fixed in one place is not left elsewhere in the files the issue covers.
-7. Each commit message has a body that says why, names no tracker issue, and carries no attribution trailer.
+7. Each commit message has a body that says why, names no tracker issue, and carries no trailer (no Co-Authored-By and no other trailer).
 
 ## Report
 
@@ -322,10 +464,12 @@ open_pair() {
   local slug base="" reopened=0
   slug="$(printf '%s' "$issue" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-')"
   [ -z "$(find_clone)" ] || fail "a pair tab labeled $issue is still open; close it before opening another."
-  # One pair at a time: each handoff in a pair waits for the fleet manager.
-  local open_pairs
+  # Each handoff waits for the fleet manager, so the number of open pairs
+  # is capped. The manager sets it with --max-pairs or FLEET_MAX_PAIRS.
+  local open_pairs open_count
   open_pairs="$(other_pairs)"
-  [ -z "$open_pairs" ] || fail "a Cursor pair is already open for $open_pairs, and the limit is one. Give $issue to an Atomic writer from its tier label."
+  open_count="$(printf '%s' "$open_pairs" | wc -w | tr -d ' ')"
+  [ "$open_count" -lt "$max_pairs" ] || fail "$open_count pairs are already open ($open_pairs), and the limit is $max_pairs. Set --max-pairs or FLEET_MAX_PAIRS, or give $issue to an Atomic writer from its tier label."
 
   if [ -n "$clone" ] && [ ! -f "$clone/.atomic/pair/pair.env" ]; then
     # Adopt a clone another harness left unfinished: its work stays, and the
@@ -374,19 +518,56 @@ open_pair() {
     cp "$brief" "$state/brief.md"
     git -C "$clone" check-ignore -q .atomic/pair/brief.md || echo ".atomic/" >> "$clone/.git/info/exclude"
   fi
-  # One model line never reviews its own work.
-  [ "${writer%%-*}" != "${reviewer%%-*}" ] || fail "writer '$writer' and reviewer '$reviewer' are the same model line."
+  # One model family never reviews its own work, whichever launcher it uses.
+  parse_seat "$writer"
+  writer_launcher=$seat_launcher
+  writer_model=$seat_model
+  parse_seat "$reviewer"
+  reviewer_launcher=$seat_launcher
+  reviewer_model=$seat_model
+  local writer_family reviewer_family
+  writer_family="$(model_family "$writer_model" "$writer_launcher")"
+  reviewer_family="$(model_family "$reviewer_model" "$reviewer_launcher")"
+  [ "$writer_family" != "$reviewer_family" ] || fail "writer '$writer' and reviewer '$reviewer' are the same model family ($writer_family)."
 
-  local tab writer_pane reviewer_pane started=""
-  start_agent pair-writer "$writer"
-  writer_pane="$started"
+  local tab="" writer_pane="" reviewer_pane="" pane="" argv_json="" result="" terminal=""
+  build_seat "$writer_launcher" "$writer_model"
+  writer_pane="$(fleet_open "$issue" pair-writer "$clone" --space "$workspace" -- "${seat_argv[@]}")" ||
+    fail "could not start the writer for $issue."
+  [ -n "$writer_pane" ] || fail "could not start the writer for $issue."
   fleet_name_tab "$writer_pane" "$issue"
-  # The reviewer joins the writer's GUI tab when the window can say which
-  # one it is; otherwise it gets a tab of its own.
-  tab="$(fleet_tab_of "$writer_pane")"
-  start_agent pair-reviewer "$reviewer" "$tab"
-  reviewer_pane="$started"
-  [ -n "$tab" ] || fleet_name_tab "$reviewer_pane" "$issue"
+  # The reviewer is the other half of this pane, not a child of the manager
+  # and not a second tab. With no GUI pane to split, it gets a tab of its own.
+  build_seat "$reviewer_launcher" "$reviewer_model"
+  pane="$(wait_for_pane "$writer_pane")"
+  if [ -n "$pane" ] && command -v herdr-app >/dev/null; then
+    argv_json="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${seat_argv[@]}")"
+    result="$(herdr-app "do" pane.split --direction down --pane "$pane" --argv "$argv_json" 2>&1)" || true
+    terminal="$(printf '%s' "$result" | python3 -c 'import json,sys
+raw = sys.stdin.read()
+start = raw.find("{")
+if start < 0:
+    sys.exit(1)
+obj = json.loads(raw[start:])
+if obj.get("error"):
+    sys.exit(1)
+sys.stdout.write(obj.get("terminal") or "")')" ||
+      fail "could not split pane $pane for the reviewer ($result). The writer is terminal $writer_pane."
+    [ -n "$terminal" ] || fail "pane split did not return a terminal ($result). The writer is terminal $writer_pane."
+    hc label "$terminal" "fleet.name=$issue" fleet.role=pair-reviewer \
+      "fleet.project=$(fleet_project "$workspace")" "herdr.space=$workspace" ||
+      fail "could not label reviewer terminal $terminal."
+    reviewer_pane="$terminal"
+    tab="$(fleet_tab_of "$writer_pane")"
+  else
+    reviewer_pane="$(fleet_open "$issue" pair-reviewer "$clone" --space "$workspace" -- "${seat_argv[@]}")" ||
+      fail "could not start the reviewer for $issue. The writer is terminal $writer_pane."
+    [ -n "$reviewer_pane" ] || fail "could not start the reviewer for $issue. The writer is terminal $writer_pane."
+    fleet_name_tab "$reviewer_pane" "$issue"
+    tab="$(fleet_tab_of "$reviewer_pane")"
+  fi
+  wait_ready "$writer_pane" "$writer_launcher" writer
+  wait_ready "$reviewer_pane" "$reviewer_launcher" reviewer
 
   cat > "$state/pair.env.new" <<EOF
 issue='$issue'
@@ -398,6 +579,10 @@ writer_pane='$writer_pane'
 reviewer_pane='$reviewer_pane'
 writer='$writer'
 reviewer='$reviewer'
+writer_launcher='$writer_launcher'
+writer_model='$writer_model'
+reviewer_launcher='$reviewer_launcher'
+reviewer_model='$reviewer_model'
 max_rounds='$max_rounds'
 EOF
   mv -f "$state/pair.env.new" "$state/pair.env"

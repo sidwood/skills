@@ -14,6 +14,8 @@
       timeout.
   fleet-hc.py tab ADDRESS
       The GUI tab holding the terminal (herdr-app ls), for tab.rename.
+  fleet-hc.py pane ADDRESS
+      The GUI pane holding the terminal, for pane.split.
   fleet-hc.py space-name ID
       The GUI name of a space on this computer.
 
@@ -171,6 +173,17 @@ def tab():
     return 1
 
 
+def pane():
+    address = sys.argv[2]
+    for space in herdr_app_ls().get("spaces", []):
+        for t in space.get("tabs", []):
+            for x in t.get("terminals", []):
+                if x.get("terminal") == address and x.get("pane"):
+                    print(x["pane"])
+                    return 0
+    return 1
+
+
 def space_name():
     wanted = sys.argv[2]
     for space in herdr_app_ls().get("spaces", []):
@@ -182,7 +195,7 @@ def space_name():
 
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else ""
-    handlers = {"snapshot": snapshot, "wait": wait, "tab": tab, "space-name": space_name}
+    handlers = {"snapshot": snapshot, "wait": wait, "tab": tab, "pane": pane, "space-name": space_name}
     if command not in handlers:
         sys.exit(__doc__)
     try:

@@ -52,24 +52,21 @@ When `launch.sh` fails after opening a terminal, read it
 (`hc read <t> --lines 0`) before retrying, and reuse or report the
 terminal instead of opening a second one.
 
-## A writer and a reviewer outside Cursor
+## A writer and a reviewer
 
-`pair.sh` is only for two Cursor `agent` models. When the writer or the
-reviewer is not one, do not use `pair.sh`. Open one tab named for the
-issue and run one agent in each half. Both calls go through `fleet_open`,
-which passes `--no-parent`. Neither is a child of your terminal.
+Open them with `scripts/pair.sh`. That is the one way. It creates one
+Herdr pane, splits it, and runs one agent in each half, named for the
+issue. Neither is a child of your terminal. QA is not a third pane of
+that tab: QA reviews what has merged to the main branch, in a pane of
+its own ([qa-agent.md](qa-agent.md)).
 
-```bash
-. scripts/fleet-hc.sh
-left="$(fleet_open ISSUE writer CLONE -- claude --model <model>)"
-fleet_name_tab "$left" ISSUE
-tab="$(fleet_tab_of "$left")"
-fleet_open ISSUE reviewer CLONE --tab "$tab" -- codex
-```
-
-The second terminal joins the first's tab (`herdr.tab`). The tab keeps
-the issue's name. Each terminal's `fleet.name` is the issue and its
-`fleet.role` is `writer` or `reviewer`. Drive the rounds yourself.
+`--writer` and `--reviewer` take a launcher and a model
+(`cursor:composer-2.5-fast`, `claude-work:claude-opus-5-5`, `claude-glm`,
+`grok`). A bare model name is the Cursor agent. `claude-work` spends the
+owner's own Claude account and is never a default: it runs only when the
+command names it. The load check still applies. How many pairs may be
+open at once defaults to 2 (`--max-pairs`, or `FLEET_MAX_PAIRS`).
+[composer-grok.md](composer-grok.md).
 
 ## A harness under a second account
 

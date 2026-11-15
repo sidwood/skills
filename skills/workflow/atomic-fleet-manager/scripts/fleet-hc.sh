@@ -116,6 +116,9 @@ print(json.load(sys.stdin).get("parent") or "")' 2>/dev/null)" = "$HC_TERMINAL_I
 # The GUI tab holding a terminal, for fleet_open --tab.
 fleet_tab_of() { python3 "$FLEET_HC_PY" tab "$1" 2>/dev/null || true; }
 
+# The GUI pane holding a terminal, for a split.
+fleet_pane_of() { python3 "$FLEET_HC_PY" pane "$1" 2>/dev/null || true; }
+
 # Fleet terminals as tab-separated rows (see fleet-hc.py snapshot).
 fleet_snapshot() { # [space]
   local space="${1:-$(fleet_space)}"

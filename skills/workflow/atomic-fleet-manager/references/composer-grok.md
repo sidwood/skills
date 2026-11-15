@@ -1,38 +1,53 @@
-# The composer-grok pair
+# The pair
 
-A lighter harness beside Atomic. It uses only the
-supported Cursor command-line agent (`agent`), so it spends Cursor
-subscription compute and nothing else. Trialed on 2026-10-04 on two
-issues; the QA agent approved both and judged the pairing trustworthy for
-simple issues with checkable criteria, with train review behind it.
+A lighter harness beside Atomic. `pair.sh` is the one way to open a
+writer and a reviewer. It creates one Herdr pane, splits it down, and
+runs one agent in each half. Trialed on 2026-10-04 on two issues with
+Cursor's agent; the QA agent approved both and judged the pairing
+trustworthy for simple issues with checkable criteria, with train review
+behind it.
 
 ## What it is
 
-Two hc terminals named for the issue (`fleet.name`), side by side in one
-GUI tab named for the issue:
+Two hc terminals named for the issue (`fleet.name`), the reviewer below
+the writer, in one GUI tab named for the issue:
 
-- **The writer** (role `pair-writer`): `agent --model composer-2.5 -f`.
-  It edits, runs the repository's checks and commits in a branch clone.
-- **The reviewer** (role `pair-reviewer`): `agent --model
-  grok-4.7-xhigh -f`, a different model line from the writer. It joins
-  the writer's GUI tab through the `herdr.tab` label. It writes one
-  report and edits nothing else.
+- **The writer** (role `pair-writer`) edits, runs the repository's checks
+  and commits in a branch clone. The default is Cursor's agent,
+  `composer-2.5`.
+- **The reviewer** (role `pair-reviewer`) is the other half of that pane.
+  It writes one report and edits nothing else. The default is Cursor's
+  agent, `grok-4.7-xhigh`, a different model family from the writer.
 - **You are the orchestrator.** You send the writer its round, then the
   reviewer its round, read each report and decide what comes next, for up
   to three rounds. The user can watch both agents work and read every
   prompt you send.
 - One reviewer, not a quorum of three. The train's checks and the QA agent
-  carry more of the weight than they do for an Atomic harness.
+  carry more of the weight than they do for an Atomic harness. QA is
+  never a third pane of this tab. It reviews work that has merged to the
+  main branch, in a pane of its own ([qa-agent.md](qa-agent.md)).
 
 ## When to use it
 
-A fleet manager that runs its units on the Cursor `agent` CLI uses the
-pair for every tier, with the models of that tier's `agent` row in
-[model-tiers.md](model-tiers.md) (Sid, 2026-11-10). `pair.sh` is only
-this Cursor pair. When the writer or the reviewer is not a Cursor
-`agent` model, do not open it with `pair.sh`:
-[launching.md](launching.md) puts one agent in each half of a tab named
-for the issue.
+Use the pair for a tier's `agent` row in
+[model-tiers.md](model-tiers.md), or name another launcher. `--writer`
+and `--reviewer` take `launcher:model`. A bare model name is still the
+Cursor agent at `~/.local/bin/agent` (Homebrew's `agent` is Grok Build,
+and this script does not call it).
+
+| Spec | What starts |
+| --- | --- |
+| `composer-2.5`, `cursor:composer-2.5-fast` | Cursor agent, `--model` that name, `--force` |
+| `claude-work:claude-opus-5-5` | `CLAUDE_CONFIG_DIR=~/.claude-work claude --dangerously-skip-permissions --model` that name. Never a default: only when the command names `claude-work`, because it spends the owner's own account. |
+| `claude-glm` | `CLAUDE_CONFIG_DIR=~/.claude-glm` and `claude --dangerously-skip-permissions --model glm-5.3[1m]`, with the unknown-model window override set. |
+| `grok`, `grok:grok-4.7` | The `grok` CLI, `--model grok-4.7` unless a model is given, `--trust`, permissions `bypassPermissions`. |
+
+Cursor is ready when the screen says `Plan, search, build` or
+`Add a follow-up`. Its trust chooser (`Trust this workspace`) is accepted
+with the `a` key. Claude is ready when a line is `❯`. Its trust chooser
+defaults to `No, exit`; the script sends Down, then Enter. Grok is ready
+when a line is `❯`. Prompts are typed with `hc send`. Cursor folds a
+prompt past about 500 characters.
 
 | Tier | `--writer` | `--reviewer` | QA |
 | --- | --- | --- | --- |
@@ -44,8 +59,9 @@ for the issue.
   be checked without interpretation (a page state, a document, a config
   change). In its trial it stated a command that did not exist and fixed a
   mistake in one file while leaving it in another.
-- `pair.sh` compares model lines by the name's first word, so two
-  `claude-*` models count as one line and are refused together.
+- `pair.sh` compares model family across launchers, so
+  `cursor:grok-4.7-xhigh` and `grok` are refused together, and so are two
+  Claude models.
 
 ## Open a pair
 
@@ -58,12 +74,14 @@ scripts/pair.sh open --issue TUS-36 --brief /path/to/TUS-36.md
 ```
 
 It checks the clearance and the load, makes the clone with `git bc-add`,
-opens the two terminals, starts both agents (answering Cursor's trust
+opens one pane and splits it, starts both agents (answering a trust
 question for the new checkout) and sends the writer round 1 with
 `hc send`. It prints `tab` (the GUI tab), `writer_pane` and
 `reviewer_pane` (the two terminals' hc addresses), `clone` and `base`.
-Report the launch once the writer is `working`. `--space` is the fleet's
-GUI space when you cannot default it (`--workspace` is the old name).
+Report the launch once the writer is at its prompt. `--space` is the
+fleet's GUI space when you cannot default it (`--workspace` is the old
+name). `--max-pairs N` is how many pairs may be open at once (default
+2, or `FLEET_MAX_PAIRS`). The load check is unchanged.
 
 ## The loop
 
@@ -112,7 +130,8 @@ Everything is in `<clone>/.atomic/pair/`:
 - `round-N-review.md`: the reviewer's findings, ending `VERDICT: APPROVED`
   or `VERDICT: CHANGES_REQUESTED`.
 - `pair.env`: the GUI tab, the two terminals, the clone, the base and
-  the models.
+  the seats. A file written by an older `pair.sh` has no launcher
+  fields; `write`, `review` and `status` still read it.
 
 Copy the directory somewhere safe before removing the clone if you want
 the review record kept.
@@ -137,20 +156,21 @@ with `hc kill <t>` and `hc rm <t>` (both addresses are in `pair.env`).
 ## Things that go wrong
 
 - **A pair waits for you.** Nothing moves between rounds until you send
-  the next prompt. That is why the limit is one pair at a time, and why
-  `pair.sh open` refuses a second: other simple-tier work goes to the
-  Atomic writers while a pair is open
+  the next prompt. The limit is 2 pairs unless you set `--max-pairs` or
+  `FLEET_MAX_PAIRS`. At the limit, other work goes to the Atomic writers
   ([model-tiers.md](model-tiers.md)). If you will not be there, use the
   unattended loop below.
-- **Commits rejected for a trailer.** Cursor adds `Co-authored-by: Cursor`
-  to every commit while `attribution.attributeCommitsToAgent` is true in
-  `~/.cursor/cli-config.json`, and the writer cannot leave it off. A
-  repository whose hook rejects attribution trailers needs that setting
-  false, or the writer finishes with everything staged and nothing
-  committed.
-- **A prompt that does not start the agent.** `pair.sh` waits for the
-  terminal to go `working` and fails if it does not; read it
-  (`hc read <t>`) before sending anything else.
+- **Commits rejected for a trailer.** The writer rules forbid every
+  trailer, including `Co-Authored-By`, which Claude adds unless told not
+  to. Cursor also adds `Co-authored-by: Cursor` while
+  `attribution.attributeCommitsToAgent` is true in
+  `~/.cursor/cli-config.json`. The commit hook rejects trailers. Never
+  pass `--no-verify`. A rejected commit is rewritten without the trailer
+  and committed again.
+- **The reviewer never reports `working`.** `hc send` succeeding is
+  delivery. `pair.sh review` does not fail when the terminal stays
+  `unknown`. Read the terminal (`hc read <t>`) when the round file does
+  not appear.
 - **Another harness left the work unfinished.** Start a pair on its clone:
   `scripts/pair.sh open --issue ID --clone DIR --brief FILE --note "..."`.
   The work stays; say in the note what state it is in.

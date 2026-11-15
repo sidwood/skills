@@ -26,6 +26,10 @@ of your terminal. The brief goes in the run as the first message, since
 a send to a booting agent can be dropped. `fleet_name_tab` names its
 GUI tab `QA`. Later prompts go with `hc send "$qa" "..."`.
 
+QA is never a third pane of a pair. A pair is a writer and a reviewer
+on a branch clone. QA runs against work that has merged to the main
+branch, and its pane is always its own.
+
 - Which config a seat uses is the owner's choice. `hc run` and a script
   cannot load a shell alias, so name a config by its expanded form
   (`env CLAUDE_CONFIG_DIR=<config dir> claude ...`). Run the seat only

@@ -80,9 +80,9 @@ approve a legacy layout continuation; it never authorizes a new clone.
   verify the Operator's reservation; preserve Operator state when moving an
   existing agent out of the reserved pane. Record the reserved tab/pane IDs
   in the handover so successors preserve the layout.
-- When the writer or the reviewer is not a Cursor model, do not use
-  `pair.sh`. Open one tab named for the ticket, split it, and start one
-  agent in each half. [references/herdr-cli.md](references/herdr-cli.md).
+- A writer and a reviewer opened together use the atomic-fleet-manager
+  `pair.sh`: one pane, split, one agent in each half. QA is never a third
+  pane of that tab. [references/herdr-cli.md](references/herdr-cli.md).
 
 ## Workflow
 
@@ -232,9 +232,9 @@ approve a legacy layout continuation; it never authorizes a new clone.
 - Compute the queue from the fleet config plus git every actionable wake;
   trust the script over your memory of it.
 - Fresh tab and workspace-namespaced agent per dispatch; create every tab in
-  the configured project workspace and never reuse a settled pane. A
-  non-Cursor writer and reviewer share one new tab, split into two panes,
-  rather than a child of the operator or `pair.sh`.
+  the configured project workspace and never reuse a settled pane. A writer
+  and reviewer opened together are a `pair.sh` split, not children of the
+  operator, and QA is not a third pane of that tab.
 - Never hand-wave a custom lane from `agent start` to prompt submission.
   After every non-ticket/custom start, run `scripts/herdr_agent_ready.py`
   with the exact agent, pane, and recipe kind; it clears known one-time

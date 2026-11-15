@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # List every agent terminal of the fleet except the caller's own: an Atomic
-# harness, a composer-grok harness, a Cursor pair (writer and reviewer shown
+# harness, a composer-grok harness, a pair (writer and reviewer shown
 # as one row), the QA agent, and any other agent in the fleet's space
 # whatever it is called (a one-off reviewer, a seat opened by hand). Each row
 # has the name, the hc address, the agent status and a progress line.

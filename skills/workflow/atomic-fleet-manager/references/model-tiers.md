@@ -40,10 +40,11 @@ tier label decides the tier; the writer comes from this table, not from a
   `atomic-work` is one on the second account (`--agent-dir
   ~/.atomic-work/agent`). `agent` is the Cursor pair
   ([composer-grok.md](composer-grok.md)), only for a fleet manager that
-  runs its units on the Cursor `agent` CLI; `scripts/pair.sh open
-  --writer <model> --reviewer <model>` takes that row's Cursor model names
-  (`composer-2.5`, `grok-4.7-xhigh`, `claude-opus-5-5-high` to review,
-  `claude-opus-5-5-xhigh` to write).
+  runs its units through `scripts/pair.sh`. A bare model name is the
+  Cursor agent (`composer-2.5`, `grok-4.7-xhigh`,
+  `claude-opus-5-5-high` to review, `claude-opus-5-5-xhigh` to write).
+  `claude-work:MODEL` is the owner's own Claude account and is never a
+  default: pass it only when the owner named it.
 - **Effort for review and QA (Sid, 2026-11-12, on Anthropic's
   recommendation).** An Opus 5.5 reviewer runs at high, not xhigh. A QA
   seat on Opus 5.5 runs at high and one on Fable 5.2 at medium. Writers
@@ -95,17 +96,16 @@ change.
    findings show the writer was out of its depth; then move the issue up
    one tier and say so.
 
-The `agent` rows are not Atomic writers: they are the separate Cursor pair
-in [composer-grok.md](composer-grok.md), opened with `scripts/pair.sh
-open` and the row's `--writer` and `--reviewer`. Its shape matches the
-tiers (one writer, one reviewer, three rounds). When the writer or the
-reviewer is not a Cursor `agent` model, do not use `pair.sh`. Open one
-tab named for the issue and run one agent in each half
-([launching.md](launching.md)).
+The `agent` rows are not Atomic writers: they are the pair in
+[composer-grok.md](composer-grok.md), opened with `scripts/pair.sh open`
+and the row's `--writer` and `--reviewer`. Its shape matches the tiers
+(one writer, one reviewer, three rounds). `pair.sh` is the one way to
+open a pair, whichever launcher the two seats use.
 
-**One pair at a time.** From `pair.sh open` until its issue is Done and
-its terminals are closed, every other issue goes to the tier's Atomic rows.
-`pair.sh open` refuses a second pair.
+**How many pairs.** From `pair.sh open` until its issue is Done and its
+terminals are closed, that pair holds a slot. The limit is 2 unless the
+manager sets `--max-pairs` or `FLEET_MAX_PAIRS`. At the limit, other
+issues go to the tier's Atomic rows. `pair.sh open` refuses one more.
 
 ### A second account as one more writer for small units
 

@@ -28,21 +28,11 @@ without `--no-parent`, and do not pass `--parent`. A child shows up inside
 the operator pane. `herdr tab create` and `herdr pane split` put the
 process in a pane of its own. Give every agent a valid name.
 
-When the writer or the reviewer is not a Cursor model, do not use
-`pair.sh`. Create one tab labelled with the ticket, split its root pane,
-and start one agent in each half:
-
-```bash
-herdr tab create --workspace <workspace-id> --cwd <clone> --label "<ticket>" --no-focus
-herdr pane split <root-pane-id> --direction right --no-focus
-herdr agent start <writer-name> --kind <kind> --pane <root-pane-id> -- <recipe args>
-herdr agent start <reviewer-name> --kind <kind> --pane <new-pane-id> -- <recipe args>
-```
-
-`tab create` returns `.result.root_pane.pane_id`. `pane split` returns the
-new pane as `.result.pane`. The tab name is the ticket. Each agent name
-matches `[a-z][a-z0-9_-]{0,31}`. Two Cursor `agent` models stay on
-`pair.sh` in the atomic-fleet-manager skill, not this split.
+A writer and a reviewer opened together are not two dispatches and not
+children of the operator. Use atomic-fleet-manager `scripts/pair.sh`: it
+creates one pane, splits it, and runs one agent in each half. QA reviews
+what has merged to the main branch, always in its own pane, never as a
+third pane of that tab.
 
 ## Dispatch
 

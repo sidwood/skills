@@ -43,9 +43,8 @@ outside manager.
    ([references/model-tiers.md](references/model-tiers.md)); start what
    the user names or approves.
 6. **Launch**, one harness per issue, trial first:
-   [references/launching.md](references/launching.md). A fleet manager on
-   the Cursor `agent` CLI uses the lighter Cursor pair, which you drive one
-   prompt at a time:
+   [references/launching.md](references/launching.md). A writer and a
+   reviewer that you drive one prompt at a time are a pair:
    [references/composer-grok.md](references/composer-grok.md).
    Several issues that share files, or a backlog of small defects, can
    run as one unit in one harness:
@@ -119,12 +118,12 @@ repository; without one, ask before the first train.
   the role, and a valid name (`fleet.name`, and the tab name when the tab
   is its own). `fleet_open` does this. A hand-written `hc run` must too.
   `FLEET_NEST` does nothing.
-- **A non-Cursor writer or reviewer is a split, not `pair.sh`.** `pair.sh`
-  is only for two Cursor `agent` models. When the writer or the reviewer
-  is not a Cursor model, open one tab named for the issue, split it, and
-  run one agent in each half, each with `--no-parent` and its own name.
-  Drive the rounds yourself.
-  [references/launching.md](references/launching.md).
+- **A pair is one split tab. QA is never in it.** `scripts/pair.sh` is
+  the one way to open a writer and a reviewer. It creates one Herdr pane,
+  splits it, and runs one agent in each half, each with its own name.
+  QA reviews work that has merged to the main branch, always in a pane of
+  its own, never as a third pane of that tab.
+  [references/qa-agent.md](references/qa-agent.md).
 - Policy per issue: the one the user named, otherwise your choice among
   its tier's presets, with the reason reported.
 - A terminal that leaves `working` has not necessarily finished: a
@@ -158,8 +157,10 @@ repository; without one, ask before the first train.
   3. Start nothing while 2 or more are waiting to land or in review.
      Finish first.
   4. One issue per code area at a time.
-  5. At most one Cursor pair at a time: a pair needs you at every handoff.
-     While one is open, other work goes to the tier's Atomic presets.
+  5. At most 2 pairs at a time, unless you set another number
+     (`pair.sh open --max-pairs`, or `FLEET_MAX_PAIRS`). A pair needs you
+     at every handoff. At the limit, other work goes to the tier's Atomic
+     presets.
   6. A follow-up run on a started issue needs no free slot.
 
   Three is what the landing gate can carry: it runs one at a time at
