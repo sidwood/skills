@@ -44,7 +44,7 @@ outside manager.
    the user names or approves.
 6. **Launch**, one harness per issue, trial first:
    [references/launching.md](references/launching.md). A writer and a
-   reviewer that you drive one prompt at a time are a pair:
+   reviewer outside Atomic, driven one prompt at a time, are a pair:
    [references/composer-grok.md](references/composer-grok.md).
    Several issues that share files, or a backlog of small defects, can
    run as one unit in one harness:
@@ -119,8 +119,10 @@ repository; without one, ask before the first train.
   is its own). `fleet_open` does this. A hand-written `hc run` must too.
   `FLEET_NEST` does nothing.
 - **A pair is one split tab. QA is never in it.** `scripts/pair.sh` is
-  the one way to open a writer and a reviewer. It creates one Herdr pane,
-  splits it, and runs one agent in each half, each with its own name.
+  the one way to open a writer and a reviewer outside Atomic. It creates
+  one Herdr pane, splits it, and runs one agent in each half, each with
+  its own name. Atomic goal-select harnesses are unchanged and stay the
+  main route.
   QA reviews work that has merged to the main branch, always in a pane of
   its own, never as a third pane of that tab.
   [references/qa-agent.md](references/qa-agent.md).

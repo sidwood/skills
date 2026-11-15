@@ -54,11 +54,13 @@ terminal instead of opening a second one.
 
 ## A writer and a reviewer
 
-Open them with `scripts/pair.sh`. That is the one way. It creates one
-Herdr pane, splits it, and runs one agent in each half, named for the
-issue. Neither is a child of your terminal. QA is not a third pane of
-that tab: QA reviews what has merged to the main branch, in a pane of
-its own ([qa-agent.md](qa-agent.md)).
+Open a writer and a reviewer outside Atomic with `scripts/pair.sh`.
+That is the one way for that pair. Atomic goal-select harnesses are
+unchanged. The script creates one Herdr pane, splits it, and runs one
+agent in each half, named for the issue. Neither is a child of your
+terminal. QA is not a third pane of that tab: QA reviews what has
+merged to the main branch, in a pane of its own
+([qa-agent.md](qa-agent.md)).
 
 `--writer` and `--reviewer` take a launcher and a model
 (`cursor:composer-2.5-fast`, `claude-work:claude-opus-5-5`, `claude-glm`,
