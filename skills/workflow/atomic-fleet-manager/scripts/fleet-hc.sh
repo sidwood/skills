@@ -7,8 +7,8 @@
 #   herdr.space=<space id>   the GUI shows it in that space; on another
 #                            machine, in that machine's space of the same id
 #   fleet.name=<ISSUE>       how the scripts find it (the GUI rewrites where)
-#   fleet.role=<role>        harness, qa, pair-writer, pair-reviewer,
-#                            composer-grok or helper
+#   fleet.role=<role>        harness, qa, writer, reviewer, pair-writer,
+#                            pair-reviewer, composer-grok or helper
 #   fleet.project=<name>     the project, wherever the terminal runs
 # A terminal opened by hand joins with
 #   hc label <t> fleet.name=<NAME> fleet.role=<role> fleet.project=<project>
@@ -65,17 +65,12 @@ fleet_close() {
 # Open a terminal for the fleet and print its address:
 #   fleet_open NAME ROLE FOLDER [--on MACHINE] [--tab TAB] [--space ID] -- ARGV...
 # It outlives the caller and keeps a shell when its program ends, so its
-# screen stays readable. --tab puts it beside another terminal in that GUI
-# tab (a pair's reviewer under its writer).
-#
-# Opened from the fleet manager's own terminal, on this machine and with no
-# --tab, it is that terminal's child: the GUI lists it under the manager,
-# so a fleet reads as one tree. It still outlives the manager
-# (--outlive-parent; a child otherwise ends with its parent's program), and
-# hc types no notes about it into the manager (--no-notify): watch.sh stays
-# the one wake-up. FLEET_NEST=0, a remote machine, --tab, or a caller with
-# no terminal of its own (hc exec) opens it with no parent, in a tab of its
-# own, as before.
+# screen stays readable. It is never a child of the caller. hc run parents
+# a new terminal under the caller unless --no-parent is set, and that child
+# shows up inside the manager's pane; that is never used. FLEET_NEST is not
+# read, so a leftover setting cannot nest one. --tab puts this terminal in
+# the other half of that GUI tab (a reviewer beside its writer). The tab is
+# named for the issue or the role, and fleet.name is a real name.
 fleet_open() {
   local name="$1" role="$2" dir="$3" on="" tab="" space="" project
   shift 3
@@ -91,13 +86,8 @@ fleet_open() {
   [ -n "$space" ] || space="$(fleet_space)"
   [ -n "$space" ] || { echo "Error: no GUI space; run inside an hc terminal of the fleet or set FLEET_SPACE." >&2; return 1; }
   project="$(fleet_project "$space")"
-  local opts=(--bg --json --outlive-parent --keep --cwd "$dir"
+  local opts=(--bg --json --no-parent --outlive-parent --keep --cwd "$dir"
     --label "herdr.space=$space" --label "fleet.name=$name" --label "fleet.role=$role" --label "fleet.project=$project")
-  if [ "${FLEET_NEST:-1}" != 0 ] && [ -n "${HC_TERMINAL_ID:-}" ] && [ -z "$on" ] && [ -z "$tab" ]; then
-    opts+=(--parent "$HC_TERMINAL_ID" --no-notify)
-  else
-    opts+=(--no-parent)
-  fi
   [ -z "$on" ] || opts+=(--on "$on")
   # A remote tab id carries its machine (framework/tb..); the label takes the bare id.
   [ -z "$tab" ] || opts+=(--label "herdr.tab=${tab#*/}")
@@ -107,8 +97,9 @@ fleet_open() {
 # Name the GUI tab holding a terminal. The GUI creates the tab a moment
 # after the terminal and names it by number; renaming the tab is what sticks
 # (setting where does not). Best effort: no window, no rename. A terminal
-# nested under the caller sits in the caller's own tab, which keeps its
-# name: its fleet.name label is how it is told apart.
+# opened into an existing tab (--tab) shares that tab, which already has
+# its name. A child of the caller, which these scripts do not create, also
+# sits in the caller's tab and must not rename it.
 fleet_name_tab() { # terminal name
   command -v herdr-app >/dev/null || return 0
   local tab="" tries=0 own=""

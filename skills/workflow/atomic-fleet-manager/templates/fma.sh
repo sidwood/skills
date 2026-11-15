@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run one Fleet Manager Assistant: a helper agent in an hc terminal of its
 # own, in a GUI tab named FMA-<n>, so the user can watch it work. Every
-# helper the fleet manager starts outside its own subagents runs this way:
-# pre-launch reads, plans, tracker edits.
+# helper the fleet manager starts runs this way, never as a child of the
+# manager's pane: pre-launch reads, plans, tracker edits.
 #
 #   fma.sh "<what it does>" <prompt file> [model] [space id]
 #

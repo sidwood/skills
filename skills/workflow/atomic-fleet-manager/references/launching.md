@@ -20,23 +20,21 @@
    ```
 
    The script opens an hc terminal named for the issue with
-   `hc run --bg --parent <your terminal> --outlive-parent --no-notify
-   --keep`, so the GUI lists it under your `FM` terminal, it outlives you
-   and the script, and it keeps a shell if Atomic exits. Never drop
-   `--outlive-parent`: a child otherwise ends when its parent's program
-   does, and a manager session that exits would stop every run. A nested
-   harness is told apart by its `fleet.name` label, not by a tab name.
-   `FLEET_NEST=0`, a remote machine, or a launch through `hc exec` gives
-   it a tab of its own, named for the issue, as before. It starts `atomic`, submits the `/workflow` command with `key=value`
-   inputs so no picker opens, and prints `terminal` (its hc address; `tab`
-   and `pane` repeat it for older callers), `run_id`, `policy`, `tier` and
-   `state`. Run it once per issue, in sequence, so clones are not created
-   concurrently. Add `--resolve-only` to preview the models and clone path
-   without starting any work. `--base-branch NAME` passes `base_branch` to
-   the workflow. Through `hc exec`, where there is no
-   `HC_TERMINAL_ID`, pass `--space <space id>` (`--workspace` is the old
-   name). A unit on another machine:
-   [remote-machines.md](remote-machines.md).
+   `hc run --bg --no-parent --outlive-parent --keep`. It is a pane of its
+   own, in a tab named for the issue. It outlives you and the script, and
+   it keeps a shell if Atomic exits. Never start it as a child of your
+   terminal: `hc run` parents under the caller unless `--no-parent` is
+   set, and that child appears inside your pane. That is never used.
+   `FLEET_NEST` is not read. It starts `atomic`, submits the `/workflow`
+   command with `key=value` inputs so no picker opens, and prints
+   `terminal` (its hc address; `tab` and `pane` repeat it for older
+   callers), `run_id`, `policy`, `tier` and `state`. Run it once per
+   issue, in sequence, so clones are not created concurrently. Add
+   `--resolve-only` to preview the models and clone path without starting
+   any work. `--base-branch NAME` passes `base_branch` to the workflow.
+   Through `hc exec`, where there is no `HC_TERMINAL_ID`, pass
+   `--space <space id>` (`--workspace` is the old name). A unit on
+   another machine: [remote-machines.md](remote-machines.md).
 5. **Verify each launch.** A harness counts as running when the script
    printed a `run_id`, the terminal's state is `atomic working`, and the
    clone `<seed>.goal-<issue>-<hash>` exists beside the seed about a minute
@@ -53,6 +51,25 @@
 When `launch.sh` fails after opening a terminal, read it
 (`hc read <t> --lines 0`) before retrying, and reuse or report the
 terminal instead of opening a second one.
+
+## A writer and a reviewer outside Cursor
+
+`pair.sh` is only for two Cursor `agent` models. When the writer or the
+reviewer is not one, do not use `pair.sh`. Open one tab named for the
+issue and run one agent in each half. Both calls go through `fleet_open`,
+which passes `--no-parent`. Neither is a child of your terminal.
+
+```bash
+. scripts/fleet-hc.sh
+left="$(fleet_open ISSUE writer CLONE -- claude --model <model>)"
+fleet_name_tab "$left" ISSUE
+tab="$(fleet_tab_of "$left")"
+fleet_open ISSUE reviewer CLONE --tab "$tab" -- codex
+```
+
+The second terminal joins the first's tab (`herdr.tab`). The tab keeps
+the issue's name. Each terminal's `fleet.name` is the issue and its
+`fleet.role` is `writer` or `reviewer`. Drive the rounds yourself.
 
 ## A harness under a second account
 

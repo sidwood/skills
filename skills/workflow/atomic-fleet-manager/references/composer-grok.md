@@ -28,7 +28,11 @@ GUI tab named for the issue:
 
 A fleet manager that runs its units on the Cursor `agent` CLI uses the
 pair for every tier, with the models of that tier's `agent` row in
-[model-tiers.md](model-tiers.md) (Sid, 2026-11-10):
+[model-tiers.md](model-tiers.md) (Sid, 2026-11-10). `pair.sh` is only
+this Cursor pair. When the writer or the reviewer is not a Cursor
+`agent` model, do not open it with `pair.sh`:
+[launching.md](launching.md) puts one agent in each half of a tab named
+for the issue.
 
 | Tier | `--writer` | `--reviewer` | QA |
 | --- | --- | --- | --- |

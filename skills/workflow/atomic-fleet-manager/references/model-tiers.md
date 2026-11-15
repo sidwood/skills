@@ -98,7 +98,10 @@ change.
 The `agent` rows are not Atomic writers: they are the separate Cursor pair
 in [composer-grok.md](composer-grok.md), opened with `scripts/pair.sh
 open` and the row's `--writer` and `--reviewer`. Its shape matches the
-tiers (one writer, one reviewer, three rounds).
+tiers (one writer, one reviewer, three rounds). When the writer or the
+reviewer is not a Cursor `agent` model, do not use `pair.sh`. Open one
+tab named for the issue and run one agent in each half
+([launching.md](launching.md)).
 
 **One pair at a time.** From `pair.sh open` until its issue is Done and
 its terminals are closed, every other issue goes to the tier's Atomic rows.

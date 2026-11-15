@@ -21,8 +21,9 @@ fleet_name_tab "$qa" QA
 
 `fleet_open` opens an hc terminal in the fleet's GUI space with the
 labels `fleet.name=QA` and `fleet.role=qa`, outliving your own; it prints
-the terminal's address. The brief goes in the run as the first message,
-since a send to a booting agent can be dropped. `fleet_name_tab` names its
+the terminal's address. It is its own pane (`--no-parent`), not a child
+of your terminal. The brief goes in the run as the first message, since
+a send to a booting agent can be dropped. `fleet_name_tab` names its
 GUI tab `QA`. Later prompts go with `hc send "$qa" "..."`.
 
 - Which config a seat uses is the owner's choice. `hc run` and a script

@@ -72,10 +72,17 @@ approve a legacy layout continuation; it never authorizes a new clone.
 - Reserve each workspace's first default tab and pane, labeled `1`, for the
   Operator. The initial pane returned by workspace creation is not an agent
   slot; never launch an agent there or repurpose it during recovery.
-- Give every worker its own new tab. On adoption, verify the Operator's
-  reservation; preserve Operator state when moving an existing agent out of
-  the reserved pane. Record the reserved tab/pane IDs in the handover so
-  successors preserve the layout.
+- Give every worker its own Herdr pane. Never start one as a child of the
+  Operator pane. `hc run` parents under the caller unless `--no-parent` is
+  set; do not pass `--parent`, and do not call `hc run` without
+  `--no-parent`. A worker is a new tab, or one half of a tab named for the
+  ticket or the role, and it carries a valid agent name. On adoption,
+  verify the Operator's reservation; preserve Operator state when moving an
+  existing agent out of the reserved pane. Record the reserved tab/pane IDs
+  in the handover so successors preserve the layout.
+- When the writer or the reviewer is not a Cursor model, do not use
+  `pair.sh`. Open one tab named for the ticket, split it, and start one
+  agent in each half. [references/herdr-cli.md](references/herdr-cli.md).
 
 ## Workflow
 
@@ -225,7 +232,9 @@ approve a legacy layout continuation; it never authorizes a new clone.
 - Compute the queue from the fleet config plus git every actionable wake;
   trust the script over your memory of it.
 - Fresh tab and workspace-namespaced agent per dispatch; create every tab in
-  the configured project workspace and never reuse a settled pane.
+  the configured project workspace and never reuse a settled pane. A
+  non-Cursor writer and reviewer share one new tab, split into two panes,
+  rather than a child of the operator or `pair.sh`.
 - Never hand-wave a custom lane from `agent start` to prompt submission.
   After every non-ticket/custom start, run `scripts/herdr_agent_ready.py`
   with the exact agent, pane, and recipe kind; it clears known one-time

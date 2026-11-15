@@ -108,8 +108,23 @@ repository; without one, ask before the first train.
   another harness.
 - A terminal's name (its `fleet.name` label, and its GUI tab) equals the
   issue identifier, one harness per terminal; `FM` and `QA` are the two
-  fixed names. Scripts find terminals by `fleet.name`, never by `where`,
+  fixed names. A writer and a reviewer that share a split tab share that
+  issue's name. Scripts find terminals by `fleet.name`, never by `where`,
   which the GUI rewrites.
+- **Never nest an agent under your pane. This is law.** `hc run` defaults
+  to `--parent` of the terminal it is started from, and that child appears
+  inside your pane. Do not pass `--parent`. Do not leave the default.
+  Every agent or helper you start gets its own Herdr pane, via
+  `--no-parent`: its own tab, or one half of a tab named for the issue or
+  the role, and a valid name (`fleet.name`, and the tab name when the tab
+  is its own). `fleet_open` does this. A hand-written `hc run` must too.
+  `FLEET_NEST` does nothing.
+- **A non-Cursor writer or reviewer is a split, not `pair.sh`.** `pair.sh`
+  is only for two Cursor `agent` models. When the writer or the reviewer
+  is not a Cursor model, open one tab named for the issue, split it, and
+  run one agent in each half, each with `--no-parent` and its own name.
+  Drive the rounds yourself.
+  [references/launching.md](references/launching.md).
 - Policy per issue: the one the user named, otherwise your choice among
   its tier's presets, with the reason reported.
 - A terminal that leaves `working` has not necessarily finished: a
