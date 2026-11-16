@@ -243,7 +243,8 @@ seat_ready() { # launcher screen
       esac
       ;;
     *)
-      if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*❯[[:space:]]*$'; then
+      # Claude can show a suggestion in the empty prompt: ❯ Try "...".
+      if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*❯[[:space:]]*(Try ".*"[[:space:]]*)?$'; then
         return 0
       fi
       ;;
