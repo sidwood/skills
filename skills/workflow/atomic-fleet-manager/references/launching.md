@@ -28,7 +28,9 @@
    `FLEET_NEST` is not read. It starts `atomic`, submits the `/workflow`
    command with `key=value` inputs so no picker opens, and prints
    `terminal` (its hc address; `tab` and `pane` repeat it for older
-   callers), `run_id`, `policy`, `tier` and `state`. Run it once per
+   callers), `run_id`, `policy`, `tier` and `state`. `run_id` is the
+   chain run on the BACKGROUND panel's `●` line, not a stage id from
+   the chat. Run it once per
    issue, in sequence, so clones are not created concurrently. Add
    `--resolve-only` to preview the models and clone path without starting
    any work. `--base-branch NAME` passes `base_branch` to the workflow.
@@ -91,9 +93,10 @@ unset so the directory's login is the one used.
   need one it lacks, a fallback included.
 - Prove a new directory with `--resolve-only` first: it runs no stage and
   prints the writer, panel and fallback it resolved.
-- Sessions are under `DIR/sessions`, and runs beside `DIR` in
-  `../workflows/runs`. Give the same directory to `resume.sh --fresh`,
-  and to anything of yours that reads a session or a ledger.
+- Sessions are under `DIR/sessions`. The workflow journal `resume.sh`
+  reads is beside `DIR`, in `../workflows/journal`. Give the same
+  directory to `resume.sh --agent-dir`, and to anything of yours that
+  reads a session.
 - That directory's settings may send helper agents to other models than
   the default one does. Read the ledger's delegations for who wrote.
 

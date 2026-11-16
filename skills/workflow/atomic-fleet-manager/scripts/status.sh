@@ -55,7 +55,15 @@ for line in sys.stdin:
 for name, members in pairs.items():
     states = {}
     for address, role, app, state, cwd in members:
-        states[role.split("-")[1]] = state if app != "none" else "gone"
+        # A live terminal whose agent reports no hc status is still there.
+        # The Cursor agent reports none, and treating that as gone marks a
+        # working pair "has left its terminal". gone is only a role the
+        # snapshot does not contain.
+        key = role.split("-")[1]
+        if app == "none" and state in ("unknown", "none", ""):
+            states[key] = "unreported"
+        else:
+            states[key] = state
     for role in ("writer", "reviewer"):
         states.setdefault(role, "gone")
     writer = next((m for m in members if m[1] == "pair-writer"), members[0])
@@ -74,6 +82,8 @@ for name, members in pairs.items():
         status, detail = "blocked", "an agent is waiting for input"
     elif busy:
         status, detail = "working", busy[0] + " working"
+    elif set(states.values()) == {"unreported"}:
+        status, detail = "idle", "no status reported"
     else:
         status = "done" if "done" in states.values() else "idle"
         detail = "at rest"
@@ -105,7 +115,7 @@ for name, members in pairs.items():
     # ends (a repair pass after a round limit). It never comes to rest, so
     # compare the run it shows with the one recorded at launch. To accept the
     # new run, append a line for it to the launch log.
-    shown="$(printf '%s\n' "$screen" | awk '/BACKGROUND/ { seen = 1 } seen' | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -1 || true)"
+    shown="$(printf '%s\n' "$screen" | fleet_chain_run || true)"
     launched="$(awk -F'\t' -v t="$address" '$1 == t { id = $3 } END { print id }' "$launch_log" 2>/dev/null || true)"
     if [ -n "$shown" ] && [ -n "$launched" ] && [ "$shown" != "$launched" ] && [ "$label" != QA ] && [ "$status" != blocked ]; then
       status=blocked

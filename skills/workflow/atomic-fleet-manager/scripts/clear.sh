@@ -8,7 +8,8 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage: clear.sh --issue ID --execution-order TEXT --in-progress N --finishing N
-                --area-clash none|ID [--blocker ID=STATE]... [options]
+                --area-clash none|ID [--blocker ID=STATE]...
+                [--web --web-in-progress N] [options]
 
   --issue ID               Tracker issue identifier (TUS-58)
   --blocker ID=STATE       One per blocker, with the state read from the

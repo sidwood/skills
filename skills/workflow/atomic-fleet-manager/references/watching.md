@@ -112,11 +112,16 @@ Options: `--interval SECONDS` (the fallback poll, default 60),
   repeats them, reviewers included. Recover in this order, moving down only
   when a step fails:
   1. `scripts/resume.sh --issue ID`: the same run, in its own session.
-  2. `scripts/resume.sh --issue ID --fresh`: the same run from a new Atomic
-     process, in a new terminal, for a dead session or a stale login.
-     Close the old terminal first (`hc kill <t>`, `hc rm <t>`);
-     Atomic hands a run to another process only after its owner has been
-     silent for two minutes, and the script refuses until then.
+  2. `scripts/resume.sh --issue ID --fresh`: the same chain run after the
+     session is dead (the machine restarted, or the terminal was killed).
+     Close the old terminal first (`hc kill <t>`, `hc rm <t>`). The script
+     reopens the session that owns the chain run with
+     `atomic --session <full id>` in a new terminal (`--no-parent`, named
+     for the issue) and asks it in plain language to resume that chain
+     run. An 8-character prefix is ambiguous; Atomic refuses it, and the
+     script passes the full id from the journal. It refuses `--fresh`
+     while the run was written in the last two minutes, so it does not
+     open a second copy of a live session.
   3. A new run with `launch.sh --checkout`, whose objective names the
      commits already reviewed and limits review to what changed since. Say
      in the report why 1 and 2 failed.
@@ -126,7 +131,22 @@ Options: `--interval SECONDS` (the fallback poll, default 60),
   `--space`.
 - `scripts/resume.sh --issue ID --status` prints the run's recorded state
   (`failed`, `blocked`, `paused`, `crashed`, `running`, `completed`), its
-  latest stage and its error, from Atomic's workflow database.
+  latest stage, its error and `session=` (the full id of the owning
+  session), from the workflow journal. That journal is
+  `~/.atomic/workflows/journal`, or `../workflows/journal` beside
+  `--agent-dir`. It does not use Postgres. The run id is the chain run.
+  A stage id is not a run; the chain run is the one on the BACKGROUND
+  panel's `●` line.
+- After a machine restart, every agent is dead and the old terminal may
+  hold an empty shell. Use step 2. Do not start a new empty `atomic` and
+  send `/workflow resume`: that session is not the owner, and the slash
+  form is also read as a stage name.
+- If that resume ends `needs_human` because it returned noop,
+  `insufficient_state` (the worker never reported back before the stage
+  returned), the writer's commit may already be on the clone and
+  not yet reviewed. Do not start another Atomic run over it: that
+  repeats the finished stages. Close this run and review the clone
+  with `scripts/pair.sh open --issue ID --clone DIR --brief FILE`.
 - The script refuses above its load limit: a resume into an overloaded
   machine dies the same way.
 - Since Atomic 0.9.27 a pause is held in the owning process and the
@@ -191,9 +211,9 @@ instances keep the old file, new launches get the new one.
 
 When a run ends at its round limit, the Atomic session in the terminal is told the run has completed, and it may decide to start another run in the same clone to fix what the reviewers left. The terminal never comes to rest, so its agent status never changes.
 
-`launch.sh` records the run each terminal was launched with in `~/.local/state/atomic-fleet/launched.tsv` (terminal, issue, run id, time). `status.sh` compares that with the run the terminal's BACKGROUND panel shows and reports the row `blocked` with `unexpected run <id>, launched with <id>`, which wakes the watcher.
+`launch.sh` records the chain run each terminal was launched with in `~/.local/state/atomic-fleet/launched.tsv` (terminal, issue, run id, time). That id is the one on the BACKGROUND panel's `●` line, not a stage id from the chat. `status.sh` compares it with the run the panel shows and reports the row `blocked` with `unexpected run <id>, launched with <id>`, which wakes the watcher. A mismatch means the session started a different chain run.
 
-- Read the first run's `goal-ledger.json` (`status` is `handover`) and the new run's inputs in the workflow database before deciding. Check the writer, the review tier and the clone are the ones you chose, and read what the reviewers left.
+- Read the first run's `goal-ledger.json` (`status` is `handover`) and the new run's inputs in the workflow journal before deciding. Check the writer, the review tier and the clone are the ones you chose, and read what the reviewers left.
 - If it is the fix pass you would have launched, let it finish, tell the terminal to start no further run, and accept the run by appending a line for it to the launch log.
 - If what is left does not merit a pass (no crash, an edge no client reaches, a demand to preserve an accident), tell the terminal to quit the run, land the last gated commit, and give the reviewer's open findings to QA to rule on.
 - The launch note tells the session to report and stop when its run ends. A session can still ignore it; the comparison above is the safeguard.

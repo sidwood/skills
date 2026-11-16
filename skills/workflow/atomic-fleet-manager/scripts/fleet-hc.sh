@@ -55,6 +55,24 @@ print("none gone" if t.get("state") != "live" else "%s %s" % (s.get("app") or "n
 # The screen (lines 0) or the screen with N lines of history.
 fleet_read() { hc read "$1" --lines "${2:-0}" 2>/dev/null; }
 
+# The chain run id on a terminal's screen. The BACKGROUND panel's bullet
+# line (`● <run id>`) is the run; a stage id printed in the chat is not.
+# When that line is missing, the last UUID after BACKGROUND. launch.sh
+# records this and status.sh compares it, so the two stay the same.
+fleet_chain_run() {
+  local uuid_re='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+  local screen id
+  screen="$(cat)"
+  id="$(printf '%s\n' "$screen" | awk '/BACKGROUND/ { seen = 1 } seen && /●/' |
+    grep -Eo "$uuid_re" | tail -1 || true)"
+  if [ -n "$id" ]; then
+    printf '%s\n' "$id"
+    return 0
+  fi
+  printf '%s\n' "$screen" | awk '/BACKGROUND/ { seen = 1 } seen' |
+    grep -Eo "$uuid_re" | tail -1 || true
+}
+
 fleet_send() { hc send "$1" "$2" >/dev/null; }
 
 fleet_close() {
