@@ -151,8 +151,13 @@ Options: `--interval SECONDS` (the fallback poll, default 60),
   machine dies the same way.
 - Since Atomic 0.9.27 a pause is held in the owning process and the
   stage, not in the run's recorded status, so `--status` reports a paused
-  run as `running` (owner alive) or `crashed` (owner gone). For a pause,
-  trust the terminal's `/workflow status`; resume it in its own session.
+  run as `running` (owner alive) or `crashed` (owner gone). A writer
+  stage that is quiet in the journal is still `running` while that
+  process is alive, and `resume.sh` will not resume it. `idle_seconds`
+  is only how long since the journal's status line was written, and
+  `owner=` says whether the session's process was alive, gone, or could
+  not be checked. For a pause, trust the terminal's `/workflow status`;
+  resume it in its own session.
 - A stage that fails on infrastructure (since Atomic 0.9.38 a typed
   `StorageUnavailableError` or `StageRehydrationError` from the SQLite
   workflow journal; before that, Postgres health checks) leaves the run

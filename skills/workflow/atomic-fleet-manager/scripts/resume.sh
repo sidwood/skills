@@ -27,7 +27,9 @@ Usage: resume.sh --issue ID [options]
   --status            Print the run's journal state and exit; resume nothing
 
 Prints `RESUMED: <issue> <run id> <latest stage>` once the run is live.
-`--status` also prints `session=`, the full id of the owning session.
+`--status` also prints `session=` (the full id of the owning session)
+and `owner=` (`alive`, `dead` or `unknown`). A quiet journal is not a
+crash: `running` stays `running` while that process is alive.
 Exits 1 with the reason when the run cannot be resumed or ends blocked.
 USAGE
 }
@@ -68,7 +70,7 @@ read_state() {
   local out error_file line key val
   error_file="$(mktemp)"
   if ! out="$(python3 - "$issue" "${run:-}" "${agent_dir:-}" 2>"$error_file" <<'PY'
-import json, os, re, sqlite3, sys, time
+import json, os, re, select, sqlite3, subprocess, sys, time
 from datetime import datetime, timezone
 
 issue, given, agent_dir = sys.argv[1:4]
@@ -261,9 +263,112 @@ owner = latest.get("modelOwner") or started.get("modelOwner") or ""
 if not full_id(owner):
     owner = find_owner(session_dir(), run_id, created_at or started.get("createdAt") or 0)
 idle = max(0, int(time.time() - (updated / 1000))) if updated else 0
-if status == "running" and idle > 120:
-    status = "crashed"
 stage = stage_name(con, run_id)
+
+def pid_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+def process_is_atomic(pid):
+    # The terminal's pid is the session only while that process is still
+    # atomic. A shell kept after atomic exits is not the session.
+    if not pid_alive(pid):
+        return False
+    try:
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    comm = out.stdout.strip()
+    return comm == "atomic" or comm.endswith("/atomic")
+
+def hc_terminals():
+    try:
+        proc = subprocess.Popen(
+            ["hc", "events", "--json"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+    except OSError:
+        return None
+    try:
+        poller = select.poll()
+        poller.register(proc.stdout, select.POLLIN)
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            if not poller.poll(500):
+                continue
+            line = proc.stdout.readline()
+            if not line:
+                return None
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "terminals" in msg:
+                return msg["terminals"]
+        return None
+    finally:
+        proc.kill()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+
+def terminal_name(terminal):
+    lab = terminal.get("labels") or {}
+    named = lab.get("fleet.name") or ""
+    if named:
+        return named
+    where = lab.get("where") or terminal.get("where") or ""
+    if " / " in where:
+        return where.split(" / ", 1)[1]
+    return ""
+
+def session_process(session):
+    # A reopened session is `atomic --session <full id>`. A shell that
+    # merely mentions the id is not that process.
+    if not session:
+        return False
+    try:
+        out = subprocess.run(
+            ["ps", "-axww", "-o", "command="],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    pattern = re.compile(r"(^|/)atomic(?:\s|$).*--session(?:-id)?[ =]%s(?:\s|$)" % re.escape(session))
+    return any(pattern.search(line) for line in out.stdout.splitlines())
+
+def owner_presence(issue, session):
+    # alive: the session's process is still atomic. dead: the terminals
+    # could be listed and that process is gone. unknown: the list failed,
+    # so a quiet journal must not be called a crash.
+    terminals = hc_terminals()
+    if terminals is None:
+        return "alive" if session_process(session) else "unknown"
+    for terminal in terminals:
+        if terminal_name(terminal) != issue or terminal.get("state") != "live":
+            continue
+        if process_is_atomic(terminal.get("pid")):
+            return "alive"
+    if session_process(session):
+        return "alive"
+    return "dead"
+
+# Journal silence is not a crash: a writer stage can go minutes without
+# a new status line while its process is still working.
+owner_state = ""
+if status == "running":
+    owner_state = owner_presence(issue, owner if full_id(owner) else "")
+    if owner_state == "dead":
+        status = "crashed"
 error = " ".join(str(error).split())[:200]
 
 def emit(key, value):
@@ -277,6 +382,7 @@ emit("cwd", cwd)
 emit("error", error)
 emit("latest_stage", stage)
 emit("session", owner if full_id(owner) else "")
+emit("owner", owner_state)
 PY
   )"; then
     local message
@@ -285,7 +391,7 @@ PY
     fail "${message:-could not read the workflow journal.}"
   fi
   rm -f "$error_file"
-  status="" resumable="" idle="" run_cwd="" error="" stage="" session=""
+  status="" resumable="" idle="" run_cwd="" error="" stage="" session="" owner=""
   while IFS= read -r line; do
     key="${line%%=*}"
     val="${line#*=}"
@@ -298,6 +404,7 @@ PY
       error) error="$val" ;;
       latest_stage) stage="$val" ;;
       session) session="$val" ;;
+      owner) owner="$val" ;;
     esac
   done <<<"$out"
   [ -n "$status" ] || fail "run ${run:-unknown} has no recorded state."
@@ -307,13 +414,18 @@ PY
 read_state
 
 if [ -n "$status_only" ]; then
-  printf 'issue=%s\nrun=%s\nstatus=%s\nresumable=%s\nidle_seconds=%s\nlatest_stage=%s\ncwd=%s\nerror=%s\nsession=%s\n' \
-    "$issue" "$run" "$status" "$resumable" "$idle" "$stage" "$run_cwd" "$error" "$session"
+  printf 'issue=%s\nrun=%s\nstatus=%s\nresumable=%s\nidle_seconds=%s\nlatest_stage=%s\ncwd=%s\nerror=%s\nsession=%s\nowner=%s\n' \
+    "$issue" "$run" "$status" "$resumable" "$idle" "$stage" "$run_cwd" "$error" "$session" "$owner"
   exit 0
 fi
 
 case "$status" in
-  running) fail "run $run is live (last write ${idle}s ago); nothing to resume." ;;
+  running)
+    if [ "$owner" = unknown ]; then
+      fail "run $run is recorded running and its process could not be checked; not resuming."
+    fi
+    fail "run $run is live (its session is still running); nothing to resume."
+    ;;
   completed|cancelled|killed) fail "run $run is $status and cannot be resumed." ;;
 esac
 [ "$resumable" != false ] || fail "run $run is marked not resumable: $error"
