@@ -255,7 +255,7 @@ seat_ready() { # launcher screen
 # Wait until the agent can take a prompt, accepting its trust chooser once.
 wait_ready() { # terminal launcher role
   local terminal="$1" launcher="$2" role="$3" screen trusted=0 tries=0
-  while [ "$tries" -lt 45 ]; do
+  while [ "$tries" -lt "${PAIR_READY_TRIES:-45}" ]; do
     screen="$(fleet_read "$terminal" 60 || true)"
     # Accept a trust chooser before treating the screen as ready. Claude's
     # chooser defaults to "No, exit", so it needs Down, then Enter.
